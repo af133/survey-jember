@@ -78,19 +78,19 @@ export default function InteractiveMap() {
 
   const [respondents, setRespondents] = useState<Respondent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     async function loadData() {
+      setLoading(true);
+      setLoadError(false);
       try {
         const data = await getRespondentsFromFirestore();
-        if (data.length > 0) {
-          setRespondents(data);
-        } else {
-          setRespondents(generateMockRespondents(240));
-        }
+        setRespondents(data);
       } catch (e) {
         console.error('Error fetching respondents from Firestore: ', e);
-        setRespondents(generateMockRespondents(240));
+        setLoadError(true);
+        setRespondents([]);
       } finally {
         setLoading(false);
       }
@@ -98,34 +98,13 @@ export default function InteractiveMap() {
     loadData();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
-        <Loader2 className="w-10 h-10 animate-spin text-agro-600" />
-        <p className="text-slate-500 text-sm font-medium">Memuat data spasial...</p>
-      </div>
-    );
-  }
 
-  const center: [number, number] = [-8.18, 113.67];
-
-  const layerOptions = [
-    { id: 'points', label: 'Titik Responden', desc: 'Marker realtime responden', icon: MapPin, color: 'bg-agro-500' },
-    { id: 'heat', label: 'Heatmap Persebaran', desc: 'Kepadatan responden', icon: Thermometer, color: 'bg-red-500' },
-    { id: 'heat_pp', label: 'Heatmap PP', desc: 'Persepsi Pertanian', icon: Thermometer, color: 'bg-green-500' },
-    { id: 'heat_pt', label: 'Heatmap PT', desc: 'Persepsi Teknologi', icon: Thermometer, color: 'bg-blue-500' },
-    { id: 'heat_nk', label: 'Heatmap NK', desc: 'Niat Keterlibatan', icon: Thermometer, color: 'bg-amber-500' },
-    { id: 'heat_ls', label: 'Heatmap LS', desc: 'Lingkungan Spasial', icon: Thermometer, color: 'bg-earth-500' },
-    { id: 'idw', label: 'IDW Surface', desc: 'Interpolasi persepsi', icon: Eye, color: 'bg-purple-500' },
-    { id: 'zones', label: 'Zona Peluang', desc: 'Zona regenerasi', icon: LayersIcon, color: 'bg-teal-600' },
-  ] as const;
-
-  // Generate IDW grid points (simulated)
+  // Generate IDW grid points — hooks MUST come before early returns
   const idwPoints = useMemo(() => {
     const pts: Array<{ lat: number; lng: number; value: number }> = [];
+    if (respondents.length === 0) return pts;
     for (let lat = -8.4; lat <= -8.0; lat += 0.02) {
       for (let lng = 113.45; lng <= 113.85; lng += 0.02) {
-        // Use inverse distance weighting approximation based on nearest respondent
         let wsum = 0;
         let vsum = 0;
         for (let i = 0; i < respondents.length; i++) {
@@ -144,7 +123,7 @@ export default function InteractiveMap() {
 
   // Zones layer
   const zones = useMemo(() => {
-    const zs = [
+    return [
       { center: [-8.10, 113.75], type: 'Zona Prioritas', color: 'rgba(22, 101, 52, 0.35)', radius: 14000, border: '#14532d' },
       { center: [-8.32, 113.55], type: 'Zona Prioritas', color: 'rgba(22, 101, 52, 0.35)', radius: 12000, border: '#14532d' },
       { center: [-8.18, 113.68], type: 'Zona Edukasi Teknologi', color: 'rgba(234, 179, 8, 0.3)', radius: 8000, border: '#ca8a04' },
@@ -152,7 +131,6 @@ export default function InteractiveMap() {
       { center: [-8.25, 113.50], type: 'Zona Intervensi Sosial', color: 'rgba(249, 115, 22, 0.3)', radius: 10000, border: '#ea580c' },
       { center: [-8.38, 113.48], type: 'Zona Non-Prioritas', color: 'rgba(220, 38, 38, 0.25)', radius: 7000, border: '#dc2626' },
     ];
-    return zs;
   }, []);
 
   const heatColors = (val: number) => {
@@ -173,6 +151,49 @@ export default function InteractiveMap() {
     };
     return palette[variable](v);
   };
+
+  // === Early returns AFTER all hooks ===
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-10 h-10 animate-spin text-agro-600" />
+        <p className="text-slate-500 text-sm font-medium">Memuat data peta dari Firebase...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
+        <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center">
+          <Info className="w-8 h-8 text-red-500" />
+        </div>
+        <div className="text-center">
+          <h2 className="font-display font-bold text-slate-900 text-lg">Gagal Memuat Data Peta</h2>
+          <p className="text-slate-500 text-sm mt-1">Tidak dapat terhubung ke Firebase Firestore.</p>
+        </div>
+        <button
+          onClick={() => { setLoading(true); getRespondentsFromFirestore().then(d => { setRespondents(d); setLoadError(false); }).catch(() => setLoadError(true)).finally(() => setLoading(false)); }}
+          className="px-4 py-2 rounded-lg bg-agro-600 text-white text-sm font-semibold hover:bg-agro-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
+
+  const center: [number, number] = [-8.18, 113.67];
+
+  const layerOptions = [
+    { id: 'points', label: 'Titik Responden', desc: 'Marker realtime responden', icon: MapPin, color: 'bg-agro-500' },
+    { id: 'heat', label: 'Heatmap Persebaran', desc: 'Kepadatan responden', icon: Thermometer, color: 'bg-red-500' },
+    { id: 'heat_pp', label: 'Heatmap PP', desc: 'Persepsi Pertanian', icon: Thermometer, color: 'bg-green-500' },
+    { id: 'heat_pt', label: 'Heatmap PT', desc: 'Persepsi Teknologi', icon: Thermometer, color: 'bg-blue-500' },
+    { id: 'heat_nk', label: 'Heatmap NK', desc: 'Niat Keterlibatan', icon: Thermometer, color: 'bg-amber-500' },
+    { id: 'heat_ls', label: 'Heatmap LS', desc: 'Lingkungan Spasial', icon: Thermometer, color: 'bg-earth-500' },
+    { id: 'idw', label: 'IDW Surface', desc: 'Interpolasi persepsi', icon: Eye, color: 'bg-purple-500' },
+    { id: 'zones', label: 'Zona Peluang', desc: 'Zona regenerasi', icon: LayersIcon, color: 'bg-teal-600' },
+  ] as const;
 
   return (
     <div className="bg-slate-50 min-h-screen">
@@ -530,11 +551,11 @@ export default function InteractiveMap() {
                 </div>
                 <div className="p-2 rounded bg-slate-50">
                   <div className="text-slate-500 text-[10px]">Skor Max</div>
-                  <div className="font-bold text-green-700">{Math.max(...respondents.map(r => r.finalScore)).toFixed(2)}</div>
+                  <div className="font-bold text-green-700">{respondents.length > 0 ? Math.max(...respondents.map(r => r.finalScore)).toFixed(2) : '-'}</div>
                 </div>
                 <div className="p-2 rounded bg-slate-50">
                   <div className="text-slate-500 text-[10px]">Skor Min</div>
-                  <div className="font-bold text-red-700">{Math.min(...respondents.map(r => r.finalScore)).toFixed(2)}</div>
+                  <div className="font-bold text-red-700">{respondents.length > 0 ? Math.min(...respondents.map(r => r.finalScore)).toFixed(2) : '-'}</div>
                 </div>
               </div>
             </div>
