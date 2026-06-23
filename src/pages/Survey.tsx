@@ -4,7 +4,8 @@ import {
   ChevronRight, Loader2, Send, Check, Leaf, Lock,
   Navigation, AlertTriangle
 } from 'lucide-react';
-import { SURVEY_SECTIONS, KECAMATAN_LIST } from '../data/mockData';
+import { SURVEY_SECTIONS, KECAMATAN_LIST, Respondent } from '../data/mockData';
+import { saveRespondentToFirestore } from '../utils/firebase';
 
 const LIKERT_LABELS = [
   { value: 1, label: 'STS', color: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' },
@@ -22,6 +23,7 @@ export default function Survey() {
   const [gpsLoading, setGpsLoading] = useState(true);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, number>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   const [identitas, setIdentitas] = useState({
     nama: '',
@@ -105,13 +107,54 @@ export default function Survey() {
     const pt = avg(SURVEY_SECTIONS.PT.items.map((i) => i.id));
     const nk = avg(SURVEY_SECTIONS.NK.items.map((i) => i.id));
     const ls = avg(SURVEY_SECTIONS.LS.items.map((i) => i.id));
+    const exp = avg(SURVEY_SECTIONS.EXP.items.map((i) => i.id));
+    const dig = avg(SURVEY_SECTIONS.DIG.items.map((i) => i.id));
     const final = (pp + pt + nk + ls) / 4;
-    return { pp, pt, nk, ls, final };
+    return { pp, pt, nk, ls, exp, dig, final };
   };
 
-  const handleSubmit = () => {
-    setSubmitted(true);
-    window.scrollTo(0, 0);
+  const handleSubmit = async () => {
+    try {
+      setSubmitting(true);
+      const scores = calculateScores();
+      const cat = scores.final <= 1.8 ? 'Sangat Rendah'
+        : scores.final <= 2.6 ? 'Rendah'
+        : scores.final <= 3.4 ? 'Sedang'
+        : scores.final <= 4.2 ? 'Tinggi' : 'Sangat Tinggi';
+
+      const surveyData: Respondent = {
+        id: respondentId,
+        nama: identitas.nama,
+        usia: Number(identitas.usia),
+        jenisKelamin: identitas.jenisKelamin as 'L' | 'P',
+        pendidikan: identitas.pendidikan,
+        kecamatan: identitas.kecamatan,
+        desa: identitas.desa,
+        latitude: identitas.latitude || -8.1721,
+        longitude: identitas.longitude || 113.6996,
+        timestamp,
+        pp: parseFloat(scores.pp.toFixed(2)),
+        pt: parseFloat(scores.pt.toFixed(2)),
+        nk: parseFloat(scores.nk.toFixed(2)),
+        ls: parseFloat(scores.ls.toFixed(2)),
+        finalScore: parseFloat(scores.final.toFixed(2)),
+        kategori: cat,
+        wilayahTinggal: identitas.wilayahTinggal as 'Perkotaan' | 'Peri-urban' | 'Pedesaan',
+        luasPertanian: identitas.luasPertanian as 'Tidak ada' | 'Sedikit' | 'Sedang' | 'Banyak' | 'Sangat banyak',
+        jarakLahan: identitas.jarakLahan,
+        pengalamanPertanian: parseFloat(scores.exp.toFixed(2)),
+        literasiDigital: parseFloat(scores.dig.toFixed(2)),
+      };
+
+      await saveRespondentToFirestore(surveyData);
+      setSubmitted(true);
+      window.scrollTo(0, 0);
+    } catch (e) {
+      console.error("Error submitting survey: ", e);
+      alert("Gagal mengirim survei ke database: " + (e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (submitted) {
@@ -525,11 +568,20 @@ export default function Survey() {
             ) : (
               <button
                 onClick={handleSubmit}
-                disabled={!canProceed()}
+                disabled={!canProceed() || submitting}
                 className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-agro-600 to-agro-500 text-white hover:from-agro-500 hover:to-agro-400 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-bold transition-all shadow-lg"
               >
-                <Send className="w-4 h-4" />
-                Kirim Survei
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Mengirim...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Kirim Survei
+                  </>
+                )}
               </button>
             )}
           </div>

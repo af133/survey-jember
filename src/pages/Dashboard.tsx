@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   BarChart3, Users, MapPin, Award, Navigation,
   AlertTriangle, TrendingUp, Activity, Map as MapIcon,
-  Target, Filter, Download
+  Target, Filter, Download, Loader2
 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -19,7 +19,8 @@ import {
   Legend,
 } from 'chart.js';
 import { Bar, Doughnut, Radar } from 'react-chartjs-2';
-import { generateMockRespondents, getCategoryColor } from '../data/mockData';
+import { generateMockRespondents, getCategoryColor, Respondent } from '../data/mockData';
+import { getRespondentsFromFirestore } from '../utils/firebase';
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, PointElement, LineElement,
@@ -30,7 +31,36 @@ ChartJS.defaults.font.family = "'Inter', sans-serif";
 ChartJS.defaults.color = '#475569';
 
 export default function Dashboard() {
-  const respondents = useMemo(() => generateMockRespondents(240), []);
+  const [respondents, setRespondents] = useState<Respondent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const data = await getRespondentsFromFirestore();
+        if (data.length > 0) {
+          setRespondents(data);
+        } else {
+          setRespondents(generateMockRespondents(240));
+        }
+      } catch (e) {
+        console.error('Error fetching respondents from Firestore: ', e);
+        setRespondents(generateMockRespondents(240));
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-10 h-10 animate-spin text-agro-600" />
+        <p className="text-slate-500 text-sm font-medium">Memuat data statistik...</p>
+      </div>
+    );
+  }
 
   const kpis = useMemo(() => {
     const total = respondents.length;

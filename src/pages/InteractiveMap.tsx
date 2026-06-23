@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { MapContainer, TileLayer, CircleMarker, useMap, Circle, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import {
   Layers as LayersIcon, MapPin, Thermometer, Info, X,
-  Maximize2, Minimize2, Search, Eye, Crosshair
+  Maximize2, Minimize2, Search, Eye, Crosshair, Loader2
 } from 'lucide-react';
 import { generateMockRespondents, getCategoryColor, JEMBER_BOUNDS, KECAMATAN_COORDS, Respondent } from '../data/mockData';
+import { getRespondentsFromFirestore } from '../utils/firebase';
 
 // Fix default icon
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -74,7 +75,37 @@ export default function InteractiveMap() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const respondents = useMemo(() => generateMockRespondents(240), []);
+
+  const [respondents, setRespondents] = useState<Respondent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const data = await getRespondentsFromFirestore();
+        if (data.length > 0) {
+          setRespondents(data);
+        } else {
+          setRespondents(generateMockRespondents(240));
+        }
+      } catch (e) {
+        console.error('Error fetching respondents from Firestore: ', e);
+        setRespondents(generateMockRespondents(240));
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-10 h-10 animate-spin text-agro-600" />
+        <p className="text-slate-500 text-sm font-medium">Memuat data spasial...</p>
+      </div>
+    );
+  }
 
   const center: [number, number] = [-8.18, 113.67];
 

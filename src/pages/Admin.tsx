@@ -1,11 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Shield, Lock, LogIn, Trash2, Edit3,
   Search, Filter, AlertTriangle, CheckCircle2,
   FileSpreadsheet, FileJson, FileType2, Database,
-  Users, Check, X, Eye, UserCheck
+  Users, Check, X, Eye, UserCheck, Loader2
 } from 'lucide-react';
 import { generateMockRespondents, getCategoryColor, Respondent } from '../data/mockData';
+import {
+  getRespondentsFromFirestore,
+  deleteRespondentFromFirestore,
+  seedFirestoreWithMockData,
+  clearFirestoreRespondents
+} from '../utils/firebase';
 
 export default function Admin() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -17,7 +23,37 @@ export default function Admin() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editingR, setEditingR] = useState<Respondent | null>(null);
 
-  const [respondents, setRespondents] = useState<Respondent[]>(() => generateMockRespondents(80));
+  const [respondents, setRespondents] = useState<Respondent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [isFirebaseEmpty, setIsFirebaseEmpty] = useState(false);
+
+  const fetchFromFirestore = async () => {
+    setLoading(true);
+    try {
+      const data = await getRespondentsFromFirestore();
+      if (data.length > 0) {
+        setRespondents(data);
+        setIsFirebaseEmpty(false);
+      } else {
+        setRespondents(generateMockRespondents(80));
+        setIsFirebaseEmpty(true);
+      }
+    } catch (error) {
+      console.error('Gagal mengambil data dari Firestore:', error);
+      setRespondents(generateMockRespondents(80));
+      setIsFirebaseEmpty(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (loggedIn) {
+      fetchFromFirestore();
+    }
+  }, [loggedIn]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +62,37 @@ export default function Admin() {
       setLoginError('');
     } else {
       setLoginError('Username atau password salah. Gunakan admin / admin.');
+    }
+  };
+
+  const handleSeed = async () => {
+    try {
+      setIsSeeding(true);
+      const mock = generateMockRespondents(240);
+      await seedFirestoreWithMockData(mock);
+      alert('Berhasil mengunggah 240 data simulasi ke Firebase!');
+      fetchFromFirestore();
+    } catch (e) {
+      console.error(e);
+      alert('Gagal mengunggah data: ' + (e as Error).message);
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
+  const handleClear = async () => {
+    if (!confirm('Apakah Anda yakin ingin menghapus semua data responden di Firebase Firestore?')) return;
+    try {
+      setIsClearing(true);
+      const ids = respondents.map(r => r.id);
+      await clearFirestoreRespondents(ids);
+      alert('Berhasil menghapus semua data responden di Firebase!');
+      fetchFromFirestore();
+    } catch (e) {
+      console.error(e);
+      alert('Gagal menghapus data: ' + (e as Error).message);
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -68,15 +135,33 @@ export default function Admin() {
     }
   };
 
-  const deleteSelected = () => {
+  const deleteSelected = async () => {
     if (selected.size === 0) return;
-    setRespondents(respondents.filter(r => !selected.has(r.id)));
-    setSelected(new Set());
+    const selectedIds = Array.from(selected);
+    try {
+      if (!isFirebaseEmpty) {
+        await clearFirestoreRespondents(selectedIds);
+      }
+      setRespondents(respondents.filter(r => !selected.has(r.id)));
+      setSelected(new Set());
+    } catch (e) {
+      console.error(e);
+      alert('Gagal menghapus data dari Firebase: ' + (e as Error).message);
+    }
   };
 
-  const deleteRespondent = (id: string) => {
-    setRespondents(respondents.filter(r => r.id !== id));
+  const deleteRespondent = async (id: string) => {
+    try {
+      if (!isFirebaseEmpty) {
+        await deleteRespondentFromFirestore(id);
+      }
+      setRespondents(respondents.filter(r => r.id !== id));
+    } catch (e) {
+      console.error(e);
+      alert('Gagal menghapus data dari Firebase: ' + (e as Error).message);
+    }
   };
+
 
   if (!loggedIn) {
     return (
@@ -192,6 +277,69 @@ export default function Admin() {
               </div>
             );
           })}
+        </div>
+
+        {/* Firebase Database Sync & Control */}
+        <div className="dash-card p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-4 justify-between">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-blue-600 rounded-xl text-white mt-0.5">
+                <Database className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-slate-900 flex items-center gap-2">
+                  Database Firebase Firestore
+                  {loading ? (
+                    <span className="text-xs font-normal text-slate-500 flex items-center gap-1">
+                      <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                      Menghubungkan...
+                    </span>
+                  ) : isFirebaseEmpty ? (
+                    <span className="text-xs font-normal text-red-600 bg-red-100/50 px-2 py-0.5 rounded-full border border-red-200">
+                      Kosong (Simulasi Lokal Aktif)
+                    </span>
+                  ) : (
+                    <span className="text-xs font-normal text-green-700 bg-green-100/50 px-2 py-0.5 rounded-full border border-green-200">
+                      Aktif ({respondents.length} Responden)
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Unggah data simulasi massal ke Firestore, atau bersihkan semua data responden yang tersimpan di Cloud.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSeed}
+                disabled={isSeeding || loading}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
+              >
+                {isSeeding ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Mengunggah...
+                  </>
+                ) : (
+                  'Upload 240 Data Simulasi'
+                )}
+              </button>
+              <button
+                onClick={handleClear}
+                disabled={isClearing || loading || respondents.length === 0 || isFirebaseEmpty}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
+              >
+                {isClearing ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Menghapus...
+                  </>
+                ) : (
+                  'Kosongkan Firebase'
+                )}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Export */}

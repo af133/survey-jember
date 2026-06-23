@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   BarChart3, Activity, Target, TrendingUp, FileSpreadsheet,
-  CheckCircle2, AlertTriangle, Database, Calculator, LineChart as LineIcon
+  CheckCircle2, AlertTriangle, Database, Calculator, LineChart as LineIcon, Loader2
 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -9,7 +9,8 @@ import {
   ArcElement, RadialLinearScale, Tooltip, Legend,
 } from 'chart.js';
 import { Scatter, Line } from 'react-chartjs-2';
-import { generateMockRespondents } from '../data/mockData';
+import { generateMockRespondents, Respondent } from '../data/mockData';
+import { getRespondentsFromFirestore } from '../utils/firebase';
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, PointElement, LineElement,
@@ -17,11 +18,41 @@ ChartJS.register(
 );
 
 export default function Analysis() {
-  const respondents = useMemo(() => generateMockRespondents(240), []);
+  const [respondents, setRespondents] = useState<Respondent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const data = await getRespondentsFromFirestore();
+        if (data.length > 0) {
+          setRespondents(data);
+        } else {
+          setRespondents(generateMockRespondents(240));
+        }
+      } catch (e) {
+        console.error('Error fetching respondents from Firestore: ', e);
+        setRespondents(generateMockRespondents(240));
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-10 h-10 animate-spin text-agro-600" />
+        <p className="text-slate-500 text-sm font-medium">Memuat analisis data...</p>
+      </div>
+    );
+  }
 
   // Correlation matrix between variables
   const correlationMatrix = useMemo(() => {
-    const keys: Array<keyof typeof respondents[0]> = ['pp', 'pt', 'nk', 'ls', 'finalScore'];
+    if (respondents.length === 0) return {};
+    const keys: Array<keyof Respondent> = ['pp', 'pt', 'nk', 'ls', 'finalScore'];
     const n = respondents.length;
     const matrix: Record<string, Record<string, number>> = {};
     keys.forEach(k1 => {
@@ -54,7 +85,7 @@ export default function Analysis() {
       if (!byWilayah[r.wilayahTinggal]) byWilayah[r.wilayahTinggal] = [];
       byWilayah[r.wilayahTinggal].push(r.finalScore);
     });
-    const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+    const avg = (arr: number[]) => arr.length === 0 ? 0 : arr.reduce((a, b) => a + b, 0) / arr.length;
     return {
       gender: { L: avg(byGender.L), P: avg(byGender.P) },
       wilayah: Object.fromEntries(Object.entries(byWilayah).map(([k, v]) => [k, avg(v)])),
