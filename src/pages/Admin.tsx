@@ -40,6 +40,8 @@ export default function Admin() {
   const [isSeeding, setIsSeeding] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isFirebaseEmpty, setIsFirebaseEmpty] = useState(false);
+  const [gpsFilter, setGpsFilter] = useState<'all' | 'invalid'>('all');
+  const [showGpsModal, setShowGpsModal] = useState(false);
 
   const fetchFromFirestore = async () => {
     setLoading(true);
@@ -184,9 +186,17 @@ export default function Admin() {
 
   const kecamatanList = useMemo(() => Array.from(new Set(respondents.map(r => r.kecamatan))).sort(), [respondents]);
 
+  const isGpsValid = (r: Respondent) =>
+    r.latitude != null &&
+    r.longitude != null &&
+    r.latitude < -8.0 &&
+    r.latitude > -8.5 &&
+    r.longitude > 113.3 &&
+    r.longitude < 114.1;
+
   const stats = useMemo(() => {
     const total = respondents.length;
-    const validGPS = respondents.filter(r => r.latitude < -8 && r.latitude > -8.5).length;
+    const validGPS = respondents.filter(isGpsValid).length;
     const duplicates = Math.floor(total * 0.03);
     return {
       total,
@@ -195,6 +205,15 @@ export default function Admin() {
       duplicates,
     };
   }, [respondents]);
+
+  const handleGpsValidate = () => {
+    const invalid = respondents.filter(r => !isGpsValid(r));
+    if (invalid.length === 0) {
+      alert(`✅ Semua ${respondents.length} responden memiliki koordinat GPS yang valid dalam batas wilayah Kabupaten Jember.`);
+    } else {
+      setShowGpsModal(true);
+    }
+  };
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
@@ -770,7 +789,10 @@ export default function Admin() {
                   Hapus {selected.size}
                 </button>
               )}
-              <button className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-agro-600 text-white hover:bg-agro-700 text-sm font-medium">
+              <button
+                onClick={handleGpsValidate}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-agro-600 text-white hover:bg-agro-700 text-sm font-medium cursor-pointer"
+              >
                 <UserCheck className="w-4 h-4" />
                 Validasi GPS
               </button>
@@ -806,7 +828,7 @@ export default function Admin() {
               </thead>
               <tbody>
                 {paginatedData.map((r) => {
-                  const gpsValid = r.latitude < -8 && r.latitude > -8.5;
+                  const gpsOk = isGpsValid(r);
                   return (
                     <tr key={r.id} className={selected.has(r.id) ? 'bg-agro-50' : ''}>
                       <td>
@@ -833,13 +855,15 @@ export default function Admin() {
                         </span>
                       </td>
                       <td>
-                        {gpsValid ? (
-                          <span className="inline-flex items-center gap-1 text-green-600 text-xs">
+                        {gpsOk ? (
+                          <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium" title={`Lat: ${r.latitude.toFixed(5)}, Lng: ${r.longitude.toFixed(5)}`}>
                             <Check className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Valid</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-red-500 text-xs">
+                          <span className="inline-flex items-center gap-1 text-red-500 text-xs font-medium" title={`GPS tidak valid: Lat ${r.latitude}, Lng ${r.longitude} di luar batas Jember`}>
                             <AlertTriangle className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Invalid</span>
                           </span>
                         )}
                       </td>
@@ -1152,6 +1176,86 @@ export default function Admin() {
           </div>
         </div>
       )}
+
+      {/* GPS Validation Modal */}
+      {showGpsModal && (() => {
+        const invalidList = respondents.filter(r => !isGpsValid(r));
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                  </div>
+                  <div>
+                    <h2 className="font-display font-bold text-slate-900">Hasil Validasi GPS</h2>
+                    <p className="text-xs text-slate-500">Batas wilayah: Lat -8.0 s/d -8.5 | Lng 113.3 s/d 114.1 (Kab. Jember)</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowGpsModal(false)} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-5 border-b border-slate-100 grid grid-cols-3 gap-3">
+                <div className="p-3 rounded-xl bg-green-50 text-center">
+                  <div className="font-display font-bold text-2xl text-green-700">{respondents.length - invalidList.length}</div>
+                  <div className="text-xs text-green-600 font-medium mt-0.5">GPS Valid</div>
+                </div>
+                <div className="p-3 rounded-xl bg-red-50 text-center">
+                  <div className="font-display font-bold text-2xl text-red-700">{invalidList.length}</div>
+                  <div className="text-xs text-red-600 font-medium mt-0.5">GPS Tidak Valid</div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 text-center">
+                  <div className="font-display font-bold text-2xl text-slate-700">{respondents.length}</div>
+                  <div className="text-xs text-slate-500 font-medium mt-0.5">Total</div>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-5">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                  Daftar GPS Tidak Valid ({invalidList.length})
+                </p>
+                {invalidList.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400">Semua GPS valid! ✅</div>
+                ) : (
+                  <div className="space-y-2">
+                    {invalidList.map((r) => (
+                      <div key={r.id} className="flex items-center gap-3 p-3 rounded-lg bg-red-50 border border-red-100">
+                        <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                          <AlertTriangle className="w-4 h-4 text-red-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-slate-900 text-sm truncate">{r.nama}</div>
+                          <div className="font-mono text-[11px] text-slate-500">{r.id} • {r.kecamatan}</div>
+                        </div>
+                        <div className="text-right text-[11px] font-mono flex-shrink-0">
+                          <div className="text-red-700 font-semibold">Lat: {r.latitude}</div>
+                          <div className="text-red-600">Lng: {r.longitude}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="p-4 border-t border-slate-100 flex gap-2 justify-between items-center">
+                <button
+                  onClick={() => { setSelected(new Set(invalidList.map(r => r.id))); setShowGpsModal(false); }}
+                  disabled={invalidList.length === 0}
+                  className="px-4 py-2 rounded-lg border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 text-sm font-semibold disabled:opacity-40 transition-colors"
+                >
+                  Pilih Semua Invalid ({invalidList.length})
+                </button>
+                <button
+                  onClick={() => setShowGpsModal(false)}
+                  className="px-4 py-2 rounded-lg bg-agro-600 text-white hover:bg-agro-700 text-sm font-semibold transition-colors"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
