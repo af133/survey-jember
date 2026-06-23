@@ -583,10 +583,6 @@ export default function Admin() {
                 Masuk ke Admin
               </button>
             </form>
-
-            <div className="mt-5 p-3 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-800">
-              <strong>Demo credentials:</strong> username <code className="bg-white px-1 rounded">admin</code> / password <code className="bg-white px-1 rounded">admin</code>
-            </div>
           </div>
         </div>
       </div>
