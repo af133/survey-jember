@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAnalytics, isSupported } from "firebase/analytics";
 import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, writeBatch } from "firebase/firestore";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { Respondent } from "../data/mockData";
 
 const firebaseConfig = {
@@ -13,16 +14,17 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-
-// Initialize Firestore
 const db = getFirestore(app);
-
-// Initialize Analytics (optional, checks support)
+const auth = getAuth(app);
 const analytics = isSupported().then((yes) => yes ? getAnalytics(app) : null);
 
-// Helper functions for Firestore
+export { app, db, auth, analytics };
+
+export const checkAdminAuth = (callback: (user: any) => void) => {
+  return onAuthStateChanged(auth, callback);
+};
+
 export async function getRespondentsFromFirestore(): Promise<Respondent[]> {
   const querySnapshot = await getDocs(collection(db, 'respondents'));
   const list: Respondent[] = [];
@@ -58,6 +60,3 @@ export async function clearFirestoreRespondents(ids: string[]): Promise<void> {
   });
   await batch.commit();
 }
-
-export { app, db, analytics };
-

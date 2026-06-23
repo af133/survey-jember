@@ -10,11 +10,17 @@ import {
   getRespondentsFromFirestore,
   deleteRespondentFromFirestore,
   seedFirestoreWithMockData,
-  clearFirestoreRespondents
+  clearFirestoreRespondents,
+  auth,
+  checkAdminAuth,
+  saveRespondentToFirestore
 } from '../utils/firebase';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import * as shpwrite from '@mapbox/shp-write';
 
 export default function Admin() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -22,6 +28,12 @@ export default function Admin() {
   const [filterKec, setFilterKec] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editingR, setEditingR] = useState<Respondent | null>(null);
+
+  // New States for Edit and Pagination
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editFormData, setEditFormData] = useState<Respondent | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 30;
 
   const [respondents, setRespondents] = useState<Respondent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -33,16 +45,11 @@ export default function Admin() {
     setLoading(true);
     try {
       const data = await getRespondentsFromFirestore();
-      if (data.length > 0) {
-        setRespondents(data);
-        setIsFirebaseEmpty(false);
-      } else {
-        setRespondents(generateMockRespondents(80));
-        setIsFirebaseEmpty(true);
-      }
+      setRespondents(data);
+      setIsFirebaseEmpty(data.length === 0);
     } catch (error) {
       console.error('Gagal mengambil data dari Firestore:', error);
-      setRespondents(generateMockRespondents(80));
+      setRespondents([]);
       setIsFirebaseEmpty(true);
     } finally {
       setLoading(false);
@@ -50,19 +57,61 @@ export default function Admin() {
   };
 
   useEffect(() => {
+    const unsubscribe = checkAdminAuth((user) => {
+      if (user) {
+        setLoggedIn(true);
+      } else if (localStorage.getItem('admin_logged_in') === 'true') {
+        setLoggedIn(true);
+      } else {
+        setLoggedIn(false);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     if (loggedIn) {
       fetchFromFirestore();
     }
   }, [loggedIn]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError('');
+
     if (username === 'admin' && password === 'admin') {
       setLoggedIn(true);
-      setLoginError('');
-    } else {
-      setLoginError('Username atau password salah. Gunakan admin / admin.');
+      localStorage.setItem('admin_logged_in', 'true');
+      return;
     }
+
+    try {
+      setLoading(true);
+      await signInWithEmailAndPassword(auth, username, password);
+    } catch (error: any) {
+      console.error('Gagal login ke Firebase:', error);
+      let errorMsg = 'Email atau password salah.';
+      if (error.code === 'auth/invalid-email') {
+        errorMsg = 'Format email tidak valid. Gunakan email terdaftar.';
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMsg = 'Koneksi internet bermasalah. Periksa koneksi Anda.';
+      }
+      setLoginError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Gagal keluar dari Firebase Auth:', error);
+    }
+    localStorage.removeItem('admin_logged_in');
+    setLoggedIn(false);
   };
 
   const handleSeed = async () => {
@@ -96,6 +145,10 @@ export default function Admin() {
     }
   };
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterKec]);
+
   const filtered = useMemo(() => {
     return respondents.filter(r => {
       const matchSearch = !search || r.nama.toLowerCase().includes(search.toLowerCase()) ||
@@ -104,6 +157,30 @@ export default function Admin() {
       return matchSearch && matchKec;
     });
   }, [respondents, search, filterKec]);
+
+  const totalItems = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const paginatedData = useMemo(() => {
+    return filtered.slice(startIndex, startIndex + itemsPerPage);
+  }, [filtered, startIndex]);
+
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages, start + maxVisible - 1);
+    
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
+  };
 
   const kecamatanList = useMemo(() => Array.from(new Set(respondents.map(r => r.kecamatan))).sort(), [respondents]);
 
@@ -151,6 +228,7 @@ export default function Admin() {
   };
 
   const deleteRespondent = async (id: string) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus responden ini?')) return;
     try {
       if (!isFirebaseEmpty) {
         await deleteRespondentFromFirestore(id);
@@ -162,6 +240,274 @@ export default function Admin() {
     }
   };
 
+  const startView = (r: Respondent) => {
+    setEditingR(r);
+    setEditFormData({ ...r });
+    setIsEditMode(false);
+  };
+
+  const startEdit = (r: Respondent) => {
+    setEditingR(r);
+    setEditFormData({ ...r });
+    setIsEditMode(true);
+  };
+
+  const handleScoreChange = (field: 'pp' | 'pt' | 'nk' | 'ls', val: number) => {
+    if (!editFormData) return;
+    const updated = { ...editFormData, [field]: val };
+    const finalScore = parseFloat(((updated.pp + updated.pt + updated.nk + updated.ls) / 4).toFixed(2));
+    const kategori = finalScore <= 1.8 ? 'Sangat Rendah'
+      : finalScore <= 2.6 ? 'Rendah'
+      : finalScore <= 3.4 ? 'Sedang'
+      : finalScore <= 4.2 ? 'Tinggi' : 'Sangat Tinggi';
+    setEditFormData({ ...updated, finalScore, kategori });
+  };
+
+  const saveEditedRespondent = async () => {
+    if (!editFormData || !editingR) return;
+    try {
+      setLoading(true);
+      if (!isFirebaseEmpty) {
+        await saveRespondentToFirestore(editFormData);
+      }
+      setRespondents(prev => prev.map(r => r.id === editFormData.id ? editFormData : r));
+      setEditingR(null);
+      setEditFormData(null);
+      setIsEditMode(false);
+      alert('Data responden berhasil diperbarui!');
+    } catch (e: any) {
+      console.error(e);
+      alert('Gagal menyimpan perubahan: ' + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [exportScope, setExportScope] = useState<'all' | 'filtered'>('filtered');
+
+  const exportData = async (format: string) => {
+    const dataToExport = exportScope === 'filtered' ? filtered : respondents;
+
+    if (dataToExport.length === 0) {
+      alert('Tidak ada data responden untuk diunduh.');
+      return;
+    }
+
+    const filename = `data_responden_${exportScope === 'filtered' ? 'terfilter' : 'semua'}_${new Date().toISOString().split('T')[0]}`;
+
+    if (format === 'CSV') {
+      const headers = ['ID', 'Nama', 'Usia', 'Jenis Kelamin', 'Pendidikan', 'Kecamatan', 'Desa', 'Latitude', 'Longitude', 'PP', 'PT', 'NK', 'LS', 'Skor Akhir', 'Kategori'];
+      const rows = dataToExport.map(r => [
+        r.id,
+        r.nama,
+        r.usia,
+        r.jenisKelamin,
+        r.pendidikan,
+        r.kecamatan,
+        r.desa,
+        r.latitude,
+        r.longitude,
+        r.pp,
+        r.pt,
+        r.nk,
+        r.ls,
+        r.finalScore,
+        r.kategori
+      ]);
+      
+      const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${filename}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } 
+    else if (format === 'Excel') {
+      const htmlTable = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8">
+          <!--[if gte mso 9]>
+          <xml>
+            <x:ExcelWorkbook>
+              <x:ExcelWorksheets>
+                <x:ExcelWorksheet>
+                  <x:Name>Data Responden</x:Name>
+                  <x:WorksheetOptions>
+                    <x:DisplayGridlines/>
+                  </x:WorksheetOptions>
+                </x:ExcelWorksheet>
+              </x:ExcelWorksheets>
+            </x:ExcelWorkbook>
+          </xml>
+          <![endif]-->
+        </head>
+        <body>
+          <table border="1">
+            <thead>
+              <tr style="background-color: #0f766e; color: white;">
+                <th>ID</th><th>Nama</th><th>Usia</th><th>Jenis Kelamin</th><th>Pendidikan</th><th>Kecamatan</th><th>Desa</th><th>Latitude</th><th>Longitude</th><th>PP</th><th>PT</th><th>NK</th><th>LS</th><th>Skor Akhir</th><th>Kategori</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${dataToExport.map(r => `
+                <tr>
+                  <td>${r.id}</td>
+                  <td>${r.nama}</td>
+                  <td>${r.usia}</td>
+                  <td>${r.jenisKelamin}</td>
+                  <td>${r.pendidikan}</td>
+                  <td>${r.kecamatan}</td>
+                  <td>${r.desa}</td>
+                  <td>${r.latitude}</td>
+                  <td>${r.longitude}</td>
+                  <td>${r.pp}</td>
+                  <td>${r.pt}</td>
+                  <td>${r.nk}</td>
+                  <td>${r.ls}</td>
+                  <td>${r.finalScore}</td>
+                  <td>${r.kategori}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </body>
+        </html>
+      `;
+      const blob = new Blob([htmlTable], { type: 'application/vnd.ms-excel;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${filename}.xls`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } 
+    else if (format === 'GeoJSON') {
+      const geojson = {
+        type: 'FeatureCollection',
+        features: dataToExport.map(r => ({
+          type: 'Feature',
+          properties: {
+            id: r.id,
+            nama: r.nama,
+            usia: r.usia,
+            jenisKelamin: r.jenisKelamin,
+            pendidikan: r.pendidikan,
+            kecamatan: r.kecamatan,
+            desa: r.desa,
+            pp: r.pp,
+            pt: r.pt,
+            nk: r.nk,
+            ls: r.ls,
+            finalScore: r.finalScore,
+            kategori: r.kategori
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [r.longitude, r.latitude]
+          }
+        }))
+      };
+      const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${filename}.geojson`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } 
+    else if (format === 'Shapefile') {
+      try {
+        const geojson = {
+          type: 'FeatureCollection' as const,
+          features: dataToExport.map(r => ({
+            type: 'Feature' as const,
+            properties: {
+              id: r.id,
+              nama: r.nama.substring(0, 10),
+              usia: r.usia,
+              gender: r.jenisKelamin,
+              didik: r.pendidikan,
+              kecamatan: r.kecamatan,
+              desa: r.desa,
+              pp: r.pp,
+              pt: r.pt,
+              nk: r.nk,
+              ls: r.ls,
+              skor: r.finalScore,
+              kategori: r.kategori
+            },
+            geometry: {
+              type: 'Point' as const,
+              coordinates: [r.longitude, r.latitude]
+            }
+          }))
+        };
+        
+        shpwrite.download(geojson, { 
+          folder: filename, 
+          filename: filename,
+          compression: 'DEFLATE',
+          outputType: 'blob'
+        });
+      } catch (e: any) {
+        console.error('Gagal export Shapefile:', e);
+        alert('Gagal mengexport Shapefile: ' + e.message);
+      }
+    } 
+    else if (format === 'GeoPackage') {
+      alert('Format GeoPackage (.gpkg) memerlukan engine SQLite. Browser Anda akan mengunduh data terstandar GeoJSON sebagai alternatif yang kompatibel penuh dengan aplikasi GIS (QGIS/ArcGIS).');
+      
+      const geojson = {
+        type: 'FeatureCollection',
+        features: dataToExport.map(r => ({
+          type: 'Feature',
+          properties: {
+            id: r.id,
+            nama: r.nama,
+            usia: r.usia,
+            jenisKelamin: r.jenisKelamin,
+            pendidikan: r.pendidikan,
+            kecamatan: r.kecamatan,
+            desa: r.desa,
+            pp: r.pp,
+            pt: r.pt,
+            nk: r.nk,
+            ls: r.ls,
+            finalScore: r.finalScore,
+            kategori: r.kategori
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [r.longitude, r.latitude]
+          }
+        }))
+      };
+      const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${filename}_gpkg_alternative.geojson`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-10 h-10 animate-spin text-agro-600" />
+        <p className="text-slate-500 text-sm font-medium">Memeriksa sesi...</p>
+      </div>
+    );
+  }
 
   if (!loggedIn) {
     return (
@@ -185,14 +531,14 @@ export default function Admin() {
 
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wide">Username</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5 uppercase tracking-wide">Username / Email</label>
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Masukkan username"
+                    placeholder="Masukkan username atau email"
                     className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm"
                   />
                 </div>
@@ -242,7 +588,7 @@ export default function Admin() {
               <p className="text-sm text-slate-500 mt-0.5">Verifikasi GPS, deteksi duplikasi, edit data, dan export.</p>
             </div>
             <button
-              onClick={() => setLoggedIn(false)}
+              onClick={handleLogout}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium self-start md:self-auto"
             >
               <X className="w-4 h-4" />
@@ -344,10 +690,23 @@ export default function Admin() {
 
         {/* Export */}
         <div className="dash-card p-4">
-          <div className="flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
-            <div>
-              <h3 className="font-display font-bold text-slate-900">Export Data</h3>
-              <p className="text-xs text-slate-500">Unduh data responden dalam berbagai format.</p>
+          <div className="flex flex-col lg:flex-row lg:items-center gap-4 justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div>
+                <h3 className="font-display font-bold text-slate-900">Export Data</h3>
+                <p className="text-xs text-slate-500">Unduh data responden dalam berbagai format.</p>
+              </div>
+              <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                <span className="text-xs font-medium text-slate-500">Cakupan Ekspor:</span>
+                <select
+                  value={exportScope}
+                  onChange={(e) => setExportScope(e.target.value as 'all' | 'filtered')}
+                  className="px-2 py-0.5 rounded border border-slate-200 text-xs font-semibold bg-white focus:border-agro-500 focus:ring-1 focus:ring-agro-100 outline-none"
+                >
+                  <option value="filtered">Data Terfilter ({filtered.length})</option>
+                  <option value="all">Semua Data ({respondents.length})</option>
+                </select>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               {[
@@ -359,7 +718,11 @@ export default function Admin() {
               ].map((b, i) => {
                 const Icon = b.icon;
                 return (
-                  <button key={i} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-medium transition-colors">
+                  <button
+                    key={i}
+                    onClick={() => exportData(b.label)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 text-xs font-medium transition-all cursor-pointer shadow-sm"
+                  >
                     <div className={`w-6 h-6 rounded ${b.color} flex items-center justify-center`}>
                       <Icon className="w-3.5 h-3.5 text-white" />
                     </div>
@@ -442,7 +805,7 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 30).map((r) => {
+                {paginatedData.map((r) => {
                   const gpsValid = r.latitude < -8 && r.latitude > -8.5;
                   return (
                     <tr key={r.id} className={selected.has(r.id) ? 'bg-agro-50' : ''}>
@@ -483,14 +846,14 @@ export default function Admin() {
                       <td>
                         <div className="flex items-center gap-1 justify-end">
                           <button
-                            onClick={() => setEditingR(r)}
+                            onClick={() => startView(r)}
                             className="w-7 h-7 rounded hover:bg-blue-50 text-blue-600 flex items-center justify-center"
-                            title="Lihat/Edit"
+                            title="Lihat Detail"
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => setEditingR(r)}
+                            onClick={() => startEdit(r)}
                             className="w-7 h-7 rounded hover:bg-amber-50 text-amber-600 flex items-center justify-center"
                             title="Edit"
                           >
@@ -512,13 +875,35 @@ export default function Admin() {
             </table>
           </div>
           <div className="p-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span>Menampilkan {Math.min(30, filtered.length)} dari {filtered.length} data.</span>
+            <span>Menampilkan {totalItems > 0 ? startIndex + 1 : 0} - {endIndex} dari {totalItems} data.</span>
             <div className="flex items-center gap-1">
-              <button className="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50">Sebelumnya</button>
-              <button className="px-2 py-1 rounded bg-agro-600 text-white">1</button>
-              <button className="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50">2</button>
-              <button className="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50">3</button>
-              <button className="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50">Selanjutnya</button>
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Sebelumnya
+              </button>
+              {getPageNumbers().map(p => (
+                <button
+                  key={p}
+                  onClick={() => setCurrentPage(p)}
+                  className={`px-2.5 py-1 rounded ${
+                    currentPage === p
+                      ? 'bg-agro-600 text-white font-bold'
+                      : 'border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Selanjutnya
+              </button>
             </div>
           </div>
         </div>
@@ -526,76 +911,244 @@ export default function Admin() {
 
       {/* Edit Modal */}
       {editingR && (
-        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-4" onClick={() => setEditingR(null)}>
+        <div className="fixed inset-0 bg-black/50 z-[1000] flex items-center justify-center p-4" onClick={() => { setEditingR(null); setIsEditMode(false); }}>
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white">
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white z-10">
               <div>
-                <h3 className="font-display font-bold text-slate-900">Detail Responden</h3>
+                <h3 className="font-display font-bold text-slate-900">{isEditMode ? 'Edit Data Responden' : 'Detail Responden'}</h3>
                 <p className="text-xs text-slate-500 font-mono">{editingR.id}</p>
               </div>
-              <button onClick={() => setEditingR(null)} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500">
+              <button onClick={() => { setEditingR(null); setIsEditMode(false); }} className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-5 space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Nama" value={editingR.nama} />
-                <Field label="Usia" value={`${editingR.usia} tahun`} />
-                <Field label="Jenis Kelamin" value={editingR.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'} />
-                <Field label="Pendidikan" value={editingR.pendidikan} />
-                <Field label="Kecamatan" value={editingR.kecamatan} />
-                <Field label="Desa" value={editingR.desa} />
-              </div>
-              <div className="h-px bg-slate-100 my-2"></div>
-              <div className="grid grid-cols-4 gap-2">
-                <div className="p-2 rounded bg-agro-50 text-center">
-                  <div className="text-[10px] text-agro-700 font-bold">PP</div>
-                  <div className="font-mono font-bold text-agro-900">{editingR.pp.toFixed(2)}</div>
+            
+            {!isEditMode ? (
+              <>
+                <div className="p-5 space-y-3 text-sm">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Nama" value={editingR.nama} />
+                    <Field label="Usia" value={`${editingR.usia} tahun`} />
+                    <Field label="Jenis Kelamin" value={editingR.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'} />
+                    <Field label="Pendidikan" value={editingR.pendidikan} />
+                    <Field label="Kecamatan" value={editingR.kecamatan} />
+                    <Field label="Desa" value={editingR.desa} />
+                  </div>
+                  <div className="h-px bg-slate-100 my-2"></div>
+                  <div className="grid grid-cols-4 gap-2">
+                    <div className="p-2 rounded bg-agro-50 text-center">
+                      <div className="text-[10px] text-agro-700 font-bold">PP</div>
+                      <div className="font-mono font-bold text-agro-900">{editingR.pp.toFixed(2)}</div>
+                    </div>
+                    <div className="p-2 rounded bg-blue-50 text-center">
+                      <div className="text-[10px] text-blue-700 font-bold">PT</div>
+                      <div className="font-mono font-bold text-blue-900">{editingR.pt.toFixed(2)}</div>
+                    </div>
+                    <div className="p-2 rounded bg-amber-50 text-center">
+                      <div className="text-[10px] text-amber-700 font-bold">NK</div>
+                      <div className="font-mono font-bold text-amber-900">{editingR.nk.toFixed(2)}</div>
+                    </div>
+                    <div className="p-2 rounded bg-earth-50 text-center">
+                      <div className="text-[10px] text-earth-700 font-bold">LS</div>
+                      <div className="font-mono font-bold text-earth-900">{editingR.ls.toFixed(2)}</div>
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg flex items-center justify-between" style={{ backgroundColor: getCategoryColor(editingR.kategori) + '20' }}>
+                    <div>
+                      <div className="text-[10px] text-slate-500">Skor Akhir</div>
+                      <div className="font-display font-bold text-2xl text-slate-900">{editingR.finalScore.toFixed(2)}</div>
+                    </div>
+                    <span className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: getCategoryColor(editingR.kategori) }}>
+                      {editingR.kategori}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 rounded bg-slate-50">
+                      <div className="text-slate-500">Latitude</div>
+                      <div className="font-mono font-bold">{editingR.latitude.toFixed(6)}</div>
+                    </div>
+                    <div className="p-2 rounded bg-slate-50">
+                      <div className="text-slate-500">Longitude</div>
+                      <div className="font-mono font-bold">{editingR.longitude.toFixed(6)}</div>
+                    </div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-50 text-xs">
+                    <div className="text-slate-500">Waktu Pengisian</div>
+                    <div className="font-medium text-slate-700">{new Date(editingR.timestamp).toLocaleString('id-ID')}</div>
+                  </div>
                 </div>
-                <div className="p-2 rounded bg-blue-50 text-center">
-                  <div className="text-[10px] text-blue-700 font-bold">PT</div>
-                  <div className="font-mono font-bold text-blue-900">{editingR.pt.toFixed(2)}</div>
+                <div className="p-4 border-t border-slate-200 flex gap-2 justify-end">
+                  <button onClick={() => setEditingR(null)} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors">Tutup</button>
+                  <button onClick={() => setIsEditMode(true)} className="px-4 py-2 rounded-lg bg-agro-600 text-white hover:bg-agro-700 text-sm font-semibold inline-flex items-center gap-1.5 shadow-sm transition-colors">
+                    <Edit3 className="w-4 h-4" />
+                    Edit Data
+                  </button>
                 </div>
-                <div className="p-2 rounded bg-amber-50 text-center">
-                  <div className="text-[10px] text-amber-700 font-bold">NK</div>
-                  <div className="font-mono font-bold text-amber-900">{editingR.nk.toFixed(2)}</div>
+              </>
+            ) : (
+              <>
+                <div className="p-5 space-y-4 text-sm">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Nama</label>
+                      <input
+                        type="text"
+                        value={editFormData?.nama || ''}
+                        onChange={(e) => setEditFormData(prev => prev ? { ...prev, nama: e.target.value } : null)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Usia</label>
+                      <input
+                        type="number"
+                        value={editFormData?.usia || ''}
+                        onChange={(e) => setEditFormData(prev => prev ? { ...prev, usia: Number(e.target.value) } : null)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Jenis Kelamin</label>
+                      <select
+                        value={editFormData?.jenisKelamin || 'L'}
+                        onChange={(e) => setEditFormData(prev => prev ? { ...prev, jenisKelamin: e.target.value as 'L' | 'P' } : null)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm bg-white"
+                      >
+                        <option value="L">Laki-laki</option>
+                        <option value="P">Perempuan</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Pendidikan</label>
+                      <select
+                        value={editFormData?.pendidikan || 'SMA'}
+                        onChange={(e) => setEditFormData(prev => prev ? { ...prev, pendidikan: e.target.value } : null)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm bg-white"
+                      >
+                        <option value="Tidak sekolah">Tidak sekolah</option>
+                        <option value="SD">SD</option>
+                        <option value="SMP">SMP</option>
+                        <option value="SMA">SMA</option>
+                        <option value="Diploma">Diploma</option>
+                        <option value="S1">S1</option>
+                        <option value="S2">S2</option>
+                        <option value="S3">S3</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Kecamatan</label>
+                      <input
+                        type="text"
+                        value={editFormData?.kecamatan || ''}
+                        onChange={(e) => setEditFormData(prev => prev ? { ...prev, kecamatan: e.target.value } : null)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Desa</label>
+                      <input
+                        type="text"
+                        value={editFormData?.desa || ''}
+                        onChange={(e) => setEditFormData(prev => prev ? { ...prev, desa: e.target.value } : null)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Latitude</label>
+                      <input
+                        type="number"
+                        step="0.000001"
+                        value={editFormData?.latitude || ''}
+                        onChange={(e) => setEditFormData(prev => prev ? { ...prev, latitude: Number(e.target.value) } : null)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Longitude</label>
+                      <input
+                        type="number"
+                        step="0.000001"
+                        value={editFormData?.longitude || ''}
+                        onChange={(e) => setEditFormData(prev => prev ? { ...prev, longitude: Number(e.target.value) } : null)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-slate-100 my-2"></div>
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">Skor Variabel (Skala 1.00 - 5.00)</h4>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">PP (Persepsi Pertanian)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="1"
+                        max="5"
+                        value={editFormData?.pp || ''}
+                        onChange={(e) => handleScoreChange('pp', Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">PT (Persepsi Teknologi)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="1"
+                        max="5"
+                        value={editFormData?.pt || ''}
+                        onChange={(e) => handleScoreChange('pt', Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">NK (Niat Keterlibatan)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="1"
+                        max="5"
+                        value={editFormData?.nk || ''}
+                        onChange={(e) => handleScoreChange('nk', Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">LS (Lingkungan Spasial)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="1"
+                        max="5"
+                        value={editFormData?.ls || ''}
+                        onChange={(e) => handleScoreChange('ls', Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-agro-500 focus:ring-2 focus:ring-agro-100 outline-none text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg flex items-center justify-between" style={{ backgroundColor: getCategoryColor(editFormData?.kategori || 'Sedang') + '20' }}>
+                    <div>
+                      <div className="text-[10px] text-slate-500">Skor Akhir (Otomatis)</div>
+                      <div className="font-display font-bold text-2xl text-slate-900">{editFormData?.finalScore.toFixed(2)}</div>
+                    </div>
+                    <span className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: getCategoryColor(editFormData?.kategori || 'Sedang') }}>
+                      {editFormData?.kategori}
+                    </span>
+                  </div>
                 </div>
-                <div className="p-2 rounded bg-earth-50 text-center">
-                  <div className="text-[10px] text-earth-700 font-bold">LS</div>
-                  <div className="font-mono font-bold text-earth-900">{editingR.ls.toFixed(2)}</div>
+                
+                <div className="p-4 border-t border-slate-200 flex gap-2 justify-end sticky bottom-0 bg-white">
+                  <button onClick={() => { setIsEditMode(false); setEditFormData(editingR ? { ...editingR } : null); }} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors">Batal</button>
+                  <button onClick={saveEditedRespondent} className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold inline-flex items-center gap-1.5 shadow-sm transition-colors">
+                    <Check className="w-4 h-4" />
+                    Simpan Perubahan
+                  </button>
                 </div>
-              </div>
-              <div className="p-3 rounded-lg flex items-center justify-between" style={{ backgroundColor: getCategoryColor(editingR.kategori) + '20' }}>
-                <div>
-                  <div className="text-[10px] text-slate-500">Skor Akhir</div>
-                  <div className="font-display font-bold text-2xl text-slate-900">{editingR.finalScore.toFixed(2)}</div>
-                </div>
-                <span className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: getCategoryColor(editingR.kategori) }}>
-                  {editingR.kategori}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2 rounded bg-slate-50">
-                  <div className="text-slate-500">Latitude</div>
-                  <div className="font-mono font-bold">{editingR.latitude.toFixed(6)}</div>
-                </div>
-                <div className="p-2 rounded bg-slate-50">
-                  <div className="text-slate-500">Longitude</div>
-                  <div className="font-mono font-bold">{editingR.longitude.toFixed(6)}</div>
-                </div>
-              </div>
-              <div className="p-2 rounded bg-slate-50 text-xs">
-                <div className="text-slate-500">Waktu Pengisian</div>
-                <div className="font-medium text-slate-700">{new Date(editingR.timestamp).toLocaleString('id-ID')}</div>
-              </div>
-            </div>
-            <div className="p-4 border-t border-slate-200 flex gap-2 justify-end">
-              <button onClick={() => setEditingR(null)} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium">Tutup</button>
-              <button className="px-4 py-2 rounded-lg bg-agro-600 text-white hover:bg-agro-700 text-sm font-semibold inline-flex items-center gap-1.5">
-                <Edit3 className="w-4 h-4" />
-                Edit Data
-              </button>
-            </div>
+              </>
+            )}
           </div>
         </div>
       )}

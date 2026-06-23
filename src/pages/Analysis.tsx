@@ -9,7 +9,7 @@ import {
   ArcElement, RadialLinearScale, Tooltip, Legend,
 } from 'chart.js';
 import { Scatter, Line } from 'react-chartjs-2';
-import { generateMockRespondents, Respondent } from '../data/mockData';
+import { Respondent } from '../data/mockData';
 import { getRespondentsFromFirestore } from '../utils/firebase';
 
 ChartJS.register(
@@ -20,19 +20,19 @@ ChartJS.register(
 export default function Analysis() {
   const [respondents, setRespondents] = useState<Respondent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     async function loadData() {
+      setLoading(true);
+      setLoadError(false);
       try {
         const data = await getRespondentsFromFirestore();
-        if (data.length > 0) {
-          setRespondents(data);
-        } else {
-          setRespondents(generateMockRespondents(240));
-        }
+        setRespondents(data);
       } catch (e) {
         console.error('Error fetching respondents from Firestore: ', e);
-        setRespondents(generateMockRespondents(240));
+        setLoadError(true);
+        setRespondents([]);
       } finally {
         setLoading(false);
       }
@@ -40,16 +40,7 @@ export default function Analysis() {
     loadData();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
-        <Loader2 className="w-10 h-10 animate-spin text-agro-600" />
-        <p className="text-slate-500 text-sm font-medium">Memuat analisis data...</p>
-      </div>
-    );
-  }
-
-  // Correlation matrix between variables
+  // Correlation matrix between variables — hooks MUST come before any early return
   const correlationMatrix = useMemo(() => {
     if (respondents.length === 0) return {};
     const keys: Array<keyof Respondent> = ['pp', 'pt', 'nk', 'ls', 'finalScore'];
@@ -91,6 +82,52 @@ export default function Analysis() {
       wilayah: Object.fromEntries(Object.entries(byWilayah).map(([k, v]) => [k, avg(v)])),
     };
   }, [respondents]);
+
+  // === Early returns AFTER all hooks ===
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-10 h-10 animate-spin text-agro-600" />
+        <p className="text-slate-500 text-sm font-medium">Memuat analisis data dari Firebase...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
+        <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center">
+          <AlertTriangle className="w-8 h-8 text-red-500" />
+        </div>
+        <div className="text-center">
+          <h2 className="font-display font-bold text-slate-900 text-lg">Gagal Memuat Data</h2>
+          <p className="text-slate-500 text-sm mt-1">Tidak dapat terhubung ke Firebase Firestore.</p>
+          <p className="text-slate-400 text-xs mt-0.5">Periksa koneksi internet dan konfigurasi Firebase Anda.</p>
+        </div>
+        <button
+          onClick={() => { setLoading(true); getRespondentsFromFirestore().then(d => { setRespondents(d); setLoadError(false); }).catch(() => setLoadError(true)).finally(() => setLoading(false)); }}
+          className="px-4 py-2 rounded-lg bg-agro-600 text-white text-sm font-semibold hover:bg-agro-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
+
+  if (respondents.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
+        <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
+          <Database className="w-8 h-8 text-slate-400" />
+        </div>
+        <div className="text-center">
+          <h2 className="font-display font-bold text-slate-900 text-lg">Belum Ada Data Responden</h2>
+          <p className="text-slate-500 text-sm mt-1">Database Firebase Firestore masih kosong.</p>
+          <p className="text-slate-400 text-xs mt-0.5">Isi data melalui halaman Admin atau formulir Survei.</p>
+        </div>
+      </div>
+    );
+  }
 
   // Cronbach alpha approximation (consistency)
   const cronbachPP = 0.82;
