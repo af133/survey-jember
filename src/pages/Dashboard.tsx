@@ -19,7 +19,7 @@ import {
   Legend,
 } from 'chart.js';
 import { Bar, Doughnut, Radar } from 'react-chartjs-2';
-import { generateMockRespondents, getCategoryColor, Respondent } from '../data/mockData';
+import { Respondent, getCategoryColor } from '../data/mockData';
 import { getRespondentsFromFirestore } from '../utils/firebase';
 
 ChartJS.register(
@@ -33,19 +33,19 @@ ChartJS.defaults.color = '#475569';
 export default function Dashboard() {
   const [respondents, setRespondents] = useState<Respondent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     async function loadData() {
+      setLoading(true);
+      setLoadError(false);
       try {
         const data = await getRespondentsFromFirestore();
-        if (data.length > 0) {
-          setRespondents(data);
-        } else {
-          setRespondents(generateMockRespondents(240));
-        }
+        setRespondents(data);
       } catch (e) {
         console.error('Error fetching respondents from Firestore: ', e);
-        setRespondents(generateMockRespondents(240));
+        setLoadError(true);
+        setRespondents([]);
       } finally {
         setLoading(false);
       }
@@ -53,17 +53,10 @@ export default function Dashboard() {
     loadData();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
-        <Loader2 className="w-10 h-10 animate-spin text-agro-600" />
-        <p className="text-slate-500 text-sm font-medium">Memuat data statistik...</p>
-      </div>
-    );
-  }
-
+  // === All hooks MUST be declared before any early return ===
   const kpis = useMemo(() => {
     const total = respondents.length;
+    if (total === 0) return [];
     const kecamatan = new Set(respondents.map(r => r.kecamatan)).size;
     const desa = new Set(respondents.map(r => r.desa)).size;
     const avgScore = respondents.reduce((sum, r) => sum + r.finalScore, 0) / total;
@@ -117,8 +110,9 @@ export default function Dashboard() {
   }, [respondents]);
 
   const radarData = useMemo(() => {
+    const n = respondents.length;
     const avg = (key: keyof typeof respondents[0]) =>
-      respondents.reduce((sum, r) => sum + (r[key] as number), 0) / respondents.length;
+      n === 0 ? 0 : respondents.reduce((sum, r) => sum + (r[key] as number), 0) / n;
     return {
       labels: ['PP\n(Persepsi)', 'PT\n(Teknologi)', 'NK\n(Keterlibatan)', 'LS\n(Lingkungan)'],
       datasets: [{
@@ -163,6 +157,52 @@ export default function Dashboard() {
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
   };
+
+  // === Early returns AFTER all hooks ===
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-10 h-10 animate-spin text-agro-600" />
+        <p className="text-slate-500 text-sm font-medium">Memuat data statistik dari Firebase...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
+        <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center">
+          <AlertTriangle className="w-8 h-8 text-red-500" />
+        </div>
+        <div className="text-center">
+          <h2 className="font-display font-bold text-slate-900 text-lg">Gagal Memuat Data</h2>
+          <p className="text-slate-500 text-sm mt-1">Tidak dapat terhubung ke Firebase Firestore.</p>
+          <p className="text-slate-400 text-xs mt-0.5">Periksa koneksi internet dan konfigurasi Firebase Anda.</p>
+        </div>
+        <button
+          onClick={() => { setLoading(true); getRespondentsFromFirestore().then(d => { setRespondents(d); setLoadError(false); }).catch(() => setLoadError(true)).finally(() => setLoading(false)); }}
+          className="px-4 py-2 rounded-lg bg-agro-600 text-white text-sm font-semibold hover:bg-agro-700 transition-colors"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
+
+  if (respondents.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
+        <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
+          <BarChart3 className="w-8 h-8 text-slate-400" />
+        </div>
+        <div className="text-center">
+          <h2 className="font-display font-bold text-slate-900 text-lg">Belum Ada Data Responden</h2>
+          <p className="text-slate-500 text-sm mt-1">Database Firebase Firestore masih kosong.</p>
+          <p className="text-slate-400 text-xs mt-0.5">Isi data melalui halaman Admin atau formulir Survei.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-slate-50 min-h-screen">
