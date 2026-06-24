@@ -73,7 +73,7 @@ export default function Home({ setCurrentPage }: HomeProps) {
     { name: 'Erik Yohan Kartiko, S.Pd., M.Kom.', role: 'Ketua Peneliti', img: '👨‍🏫' },
     { name: 'Prof. Dr. Saiful Bukhori, S.T., M.Kom.', role: 'Ahli Intelligent Multimedia System', img: '👩‍🏫' },
     { name: 'Andre Firmansyah', role: 'Asisten Peneliti', img: '👨‍💻' },
-    { name: 'Randy Putranto', role: 'Asisten Peneliti', img: '👩‍🌾' },
+    { name: 'Randy Putranto', role: 'Asisten Peneliti', img: '👨‍💻' },
   ];
 
   return (

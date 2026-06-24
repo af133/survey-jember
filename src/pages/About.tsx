@@ -2,7 +2,7 @@ import {
   BookOpen, Target, FlaskConical, Database, MapPin,
   Users, Award, Server, Globe, Quote, CheckCircle2,
   Sprout, Code,
-  Layers
+  Layers, Zap, BarChart3
 } from 'lucide-react';
 
 export default function About() {
@@ -39,11 +39,11 @@ export default function About() {
 
   const tech = [
     { name: 'React', desc: 'Frontend library', icon: Code, color: 'text-blue-500' },
-    { name: 'Next.js', desc: 'React framework', icon: Globe, color: 'text-slate-700' },
-    { name: 'Laravel', desc: 'REST API backend', icon: Server, color: 'text-red-500' },
-    { name: 'PostgreSQL + PostGIS', desc: 'Spatial database', icon: Database, color: 'text-blue-700' },
+    { name: 'Vite', desc: 'Frontend build tool', icon: Zap, color: 'text-purple-500' },
+    { name: 'Firebase', desc: 'Backend & Database', icon: Database, color: 'text-yellow-500' },
+    { name: 'TypeScript', desc: 'Type-safe JavaScript', icon: Code, color: 'text-blue-700' },
     { name: 'Leaflet.js', desc: 'Interactive maps', icon: MapPin, color: 'text-agro-600' },
-    { name: 'Chart.js', desc: 'Data visualization', icon: BookOpen, color: 'text-pink-500' },
+    { name: 'Chart.js', desc: 'Data visualization', icon: BarChart3, color: 'text-pink-500' },
     { name: 'Tailwind CSS', desc: 'Utility-first styling', icon: Sprout, color: 'text-cyan-500' },
     { name: 'OpenStreetMap', desc: 'Basemap provider', icon: Globe, color: 'text-green-600' },
   ];
@@ -51,7 +51,7 @@ export default function About() {
   const team = [
     { name: 'Erik Yohan Kartiko, S.Pd., M.Kom.', role: 'Ketua Peneliti', affiliation: 'Fakultas Ilmu Komputer', img: '👨‍🏫' },
     { name: 'Prof. Dr. Saiful Bukhori, S.T., M.Kom.', role: 'Ahli Intelligent Multimedia System',  affiliation: 'Fakultas Ilmu Komputer', img: '👩‍🏫' },
-    { name: 'Andre Firmansyah', role: 'Asisten Peneliti', affiliation: 'Fakultas Ilmu Komputer', img: '👨‍🌾' },
+    { name: 'Andre Firmansyah', role: 'Asisten Peneliti', affiliation: 'Fakultas Ilmu Komputer', img: '👨‍💻' },
     { name: 'Randy Putranto', role: 'Asisten Peneliti', affiliation: 'Fakultas Ilmu Komputer', img: '👨‍💻' },
   ];
 
@@ -302,7 +302,7 @@ export default function About() {
             </div>
             <h2 className="font-display font-bold text-2xl text-slate-900">Tim Peneliti</h2>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-2 gap-4">
             {team.map((t, i) => (
               <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100">
                 <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center text-3xl shadow-sm flex-shrink-0">

@@ -6,9 +6,12 @@ export default function Footer() {
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="md:col-span-2">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-agro-500 to-agro-700 flex items-center justify-center">
-                <Leaf className="w-5 h-5 text-white" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-agro-500 to-agro-700 flex items-center justify-center shadow-md">
+                  <Leaf className="w-5 h-5 text-white" strokeWidth={2.5} />
+                </div>
+                <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-earth-500 rounded-full border-2 border-slate-900"></div>
               </div>
               <div>
                 <div className="font-display font-bold text-white text-lg leading-tight">GeoGenZ AgroInsight</div>
@@ -21,7 +24,7 @@ export default function Footer() {
             </p>
             <div className="flex items-center gap-2 text-sm text-slate-400">
               <GraduationCap className="w-4 h-4" />
-              <span>Penelitian Akademik &copy; {new Date().getFullYear()}</span>
+              <span>Penelitian Akademik Fakultas Ilmu Komputer &copy; {new Date().getFullYear()}</span>
             </div>
           </div>
 
@@ -41,11 +44,11 @@ export default function Footer() {
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 mt-0.5 text-agro-400 flex-shrink-0" />
-                <span>Jember, Jawa Timur<br />Indonesia</span>
+                <span>Fakultas Ilmu Komputer<br />Jember, Jawa Timur<br />Indonesia</span>
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-agro-400" />
-                <span>geogenz@univ.ac.id</span>
+                <span>geogenz@unej.ac.id</span>
               </li>
               <li className="flex items-center gap-2">
                 <Code2 className="w-4 h-4 text-agro-400" />
@@ -60,7 +63,7 @@ export default function Footer() {
             &copy; {new Date().getFullYear()} GeoGenZ AgroInsight. Penelitian Model Geoinformatika.
           </p>
           <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span>Built with React + Leaflet + PostGIS</span>
+            <span>Built with React + Vite + Firebase + Leaflet</span>
             <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
             <span>Basemap &copy; OpenStreetMap</span>
           </div>
