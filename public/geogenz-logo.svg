@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40">
+  <defs>
+    <linearGradient id="agroGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22c55e" />
+      <stop offset="100%" stop-color="#15803d" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Rounded Box -->
+  <rect x="2" y="2" width="36" height="36" rx="8" fill="url(#agroGrad)" />
+  
+  <!-- Leaf Icon -->
+  <g transform="translate(10, 10) scale(0.8333)" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 20A7 7 0 0 1 14 6h7v7a7 7 0 0 1-7 7H4v-7Z"/>
+    <path d="M11 20c-4.4-4.4-4.4-11.6 0-16"/>
+    <path d="m15 9-4 4"/>
+  </g>
+
+  <!-- Earth Dot -->
+  <circle cx="36" cy="36" r="5" fill="#c5713a" stroke="#ffffff" stroke-width="2" />
+</svg>

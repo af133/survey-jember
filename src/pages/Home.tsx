@@ -79,7 +79,7 @@ export default function Home({ setCurrentPage }: HomeProps) {
   return (
     <div className="font-sans">
       {/* HERO */}
-      <section className="hero-gradient hero-pattern relative overflow-hidden text-white">
+      <section className="bg-gradient-to-br from-slate-900 via-agro-950 to-agro-900 hero-pattern relative overflow-hidden text-white">
         <div className="absolute inset-0 opacity-10">
           <svg width="100%" height="100%">
             <defs>
@@ -97,8 +97,8 @@ export default function Home({ setCurrentPage }: HomeProps) {
                 <div className="w-2 h-2 bg-agro-400 rounded-full animate-pulse" />
                 <span>Penelitian Geoinformatika 2026</span>
               </div>
-              <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight mb-5">
-                GeoGenZ <span className="text-agro-300">AgroInsight</span>
+              <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight mb-5 text-white">
+                GeoGenZ <span className="text-agro-400">AgroInsight</span>
               </h1>
               <p className="text-lg md:text-xl text-slate-200 leading-relaxed mb-8 max-w-xl">
                 Platform WebGIS untuk Analisis Persepsi Generasi Z dan Peluang Regenerasi Pertanian
@@ -131,7 +131,7 @@ export default function Home({ setCurrentPage }: HomeProps) {
                           <Icon className={`w-4 h-4 ${s.color}`} />
                         </div>
                       </div>
-                      <div className="text-2xl font-display font-bold">{s.value}</div>
+                      <div className="text-2xl font-display font-bold text-white">{s.value}</div>
                       <div className="text-xs text-slate-300">{s.label}</div>
                     </div>
                   );
@@ -146,18 +146,9 @@ export default function Home({ setCurrentPage }: HomeProps) {
                   <div className="w-3 h-3 rounded-full bg-green-400"></div>
                   <div className="flex-1 text-center text-xs text-slate-300 font-mono">WebGIS Dashboard Preview</div>
                 </div>
-                <div className="rounded-xl overflow-hidden bg-slate-800 aspect-video flex items-center justify-center relative">
-                  <div className="absolute inset-0 bg-gradient-to-br from-agro-900/40 to-earth-900/40"></div>
-                  <div className="relative text-center">
-                    <MapIcon className="w-20 h-20 text-agro-400 mx-auto mb-3 opacity-80" strokeWidth={1.5} />
-                    <div className="grid grid-cols-3 gap-2 max-w-[280px] mx-auto mt-4">
-                      <div className="bg-agro-500/30 h-2 rounded"></div>
-                      <div className="bg-earth-500/30 h-2 rounded"></div>
-                      <div className="bg-blue-500/30 h-2 rounded"></div>
-                      <div className="bg-yellow-500/30 h-2 rounded col-span-2"></div>
-                      <div className="bg-red-500/30 h-2 rounded"></div>
-                    </div>
-                  </div>
+                <div className="rounded-xl overflow-hidden aspect-video relative shadow-2xl border border-white/10 group bg-slate-900">
+                  <img src="/dashboard-preview.png" alt="WebGIS Dashboard Preview" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent pointer-events-none"></div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 mt-3">
                   <div className="bg-white/5 rounded-lg p-2">
