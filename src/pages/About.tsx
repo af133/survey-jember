@@ -115,11 +115,10 @@ export default function About() {
           <div className="grid md:grid-cols-2 gap-3">
             {[
               'Menganalisis persepsi Generasi Z terhadap sektor pertanian di Kabupaten Jember.',
-              'Mengubah data persepsi menjadi informasi spasial melalui interpolasi spasial berbasis GIS.',
-              'Memodelkan potensi wilayah pertanian menggunakan citra Sentinel-2 dan data statistik pertanian.',
-              'Mengintegrasikan faktor sosial dan biofisik dalam model geospasial untuk identifikasi wilayah potensial.',
-              'Menghasilkan peta zona peluang regenerasi pertanian sebagai proof of concept TKT 3.',
-              'Menyajikan hasil analisis dalam platform WebGIS untuk mendukung visualisasi dan pengambilan keputusan.'
+              'Mengubah data persepsi menjadi informasi spasial melalui interpolasi spasial.',
+              'Memodelkan potensi wilayah pertanian menggunakan data penginderaan jauh dan data statistik pertanian.',
+              'Mengintegrasikan faktor sosial dan biofisik dalam suatu model geospasial.',
+              'Menghasilkan peta zona peluang regenerasi pertanian sebagai proof of concept model pada Tingkat Kesiapterapan Teknologi (TKT) 3',
             ].map((t, i) => (
               <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50">
                 <CheckCircle2 className="w-5 h-5 text-agro-600 flex-shrink-0 mt-0.5" />

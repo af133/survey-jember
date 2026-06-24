@@ -79,7 +79,8 @@ export default function Home({ setCurrentPage }: HomeProps) {
   return (
     <div className="font-sans">
       {/* HERO */}
-      <section className="bg-gradient-to-br from-slate-900 via-agro-950 to-agro-900 hero-pattern relative overflow-hidden text-white">
+      <section className="bg-gradient-to-br from-slate-900 via-agro-950 to-agro-900 relative overflow-hidden text-white">
+        <div className="absolute inset-0 hero-pattern opacity-50"></div>
         <div className="absolute inset-0 opacity-10">
           <svg width="100%" height="100%">
             <defs>
