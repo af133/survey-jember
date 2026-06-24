@@ -1,7 +1,8 @@
 import {
   BookOpen, Target, FlaskConical, Database, MapPin,
   Users, Award, Server, Globe, Quote, CheckCircle2,
-  Sprout, Code
+  Sprout, Code,
+  Layers
 } from 'lucide-react';
 
 export default function About() {
@@ -48,12 +49,10 @@ export default function About() {
   ];
 
   const team = [
-    { name: 'Dr. Ir. Bambang Sutrisno, M.Si.', role: 'Ketua Peneliti', affiliation: 'Fakultas Pertanian', img: '👨‍🏫' },
-    { name: 'Prof. Dr. Rina Wulandari, M.Sc.', role: 'Ahli Geoinformatika', affiliation: 'Fakultas Teknik Geodesi', img: '👩‍🏫' },
-    { name: 'Ir. Hariyanto, M.Agr.Sc.', role: 'Ahli Pertanian', affiliation: 'Fakultas Pertanian', img: '👨‍🌾' },
-    { name: 'Ahmad Fauzi, S.Kom., M.Kom.', role: 'WebGIS Developer', affiliation: 'Fakultas Ilmu Komputer', img: '👨‍💻' },
-    { name: 'Dewi Permata, S.P., M.Sc.', role: 'Peneliti Muda', affiliation: 'Fakultas Pertanian', img: '👩‍🌾' },
-    { name: 'M. Rizki Pratama, S.Si.', role: 'Analis Data Spasial', affiliation: 'Fakultas Geografi', img: '🧑‍💻' },
+    { name: 'Erik Yohan Kartiko, S.Pd., M.Kom.', role: 'Ketua Peneliti', affiliation: 'Fakultas Ilmu Komputer', img: '👨‍🏫' },
+    { name: 'Prof. Dr. Saiful Bukhori, S.T., M.Kom.', role: 'Ahli Intelligent Multimedia System',  affiliation: 'Fakultas Ilmu Komputer', img: '👩‍🏫' },
+    { name: 'Andre Firmansyah', role: 'Asisten Peneliti', affiliation: 'Fakultas Ilmu Komputer', img: '👨‍🌾' },
+    { name: 'Randy Putranto', role: 'Asisten Peneliti', affiliation: 'Fakultas Ilmu Komputer', img: '👨‍💻' },
   ];
 
   const outputs = [
@@ -96,20 +95,11 @@ export default function About() {
           </div>
           <div className="prose prose-slate max-w-none text-slate-600 space-y-3 leading-relaxed">
             <p>
-              Kabupaten Jember merupakan kawasan agropolitan yang memiliki potensi besar di sektor pertanian,
-              meliputi komoditas tembakau, kopi, kakao, padi, dan tebu. Namun, regenerasi petani menghadapi
-              tantangan serius seiring menurunnya minat generasi muda untuk terlibat di sektor pertanian.
+              Regenerasi petani merupakan salah satu tantangan utama dalam pembangunan pertanian berkelanjutan. Menurunnya minat generasi muda terhadap sektor pertanian dapat berdampak pada keberlanjutan produksi pangan di masa depan. Di sisi lain, Generasi Z sebagai generasi digital memiliki karakteristik yang dekat dengan teknologi dan inovasi, sehingga berpotensi menjadi aktor penting dalam transformasi pertanian modern.
+
             </p>
             <p>
-              Generasi Z (lahir 1997–2012) sebagai kelompok usia produktif masa depan memiliki persepsi yang
-              beragam terhadap pertanian, dipengaruhi oleh faktor teknologi, ekonomi, sosial, dan lingkungan spasial.
-              Diperlukan pemetaan berbasis geoinformatika untuk memahami distribusi spasial persepsi dan merancang
-              intervensi yang tepat sasaran.
-            </p>
-            <p>
-              Penelitian ini mengembangkan platform WebGIS yang mengintegrasikan data survei lapangan dengan
-              analisis spasial (heatmap, interpolasi IDW, zonasi) untuk menghasilkan sistem pendukung keputusan
-              bagi pemerintah daerah, akademisi, dan pemangku kepentingan terkait.
+              Perkembangan teknologi geoinformatika dan penginderaan jauh memungkinkan analisis potensi wilayah pertanian secara objektif. Namun, kajian mengenai persepsi generasi muda terhadap sektor pertanian masih banyak dilakukan secara non-spasial. Oleh karena itu, penelitian ini mengintegrasikan aspek sosial dan biofisik wilayah dalam suatu model komputasional geospasial.
             </p>
           </div>
         </div>
@@ -124,13 +114,12 @@ export default function About() {
           </div>
           <div className="grid md:grid-cols-2 gap-3">
             {[
-              'Menganalisis persepsi Generasi Z terhadap pertanian di Kabupaten Jember.',
-              'Memetakan sebaran spasial responden dengan validasi GPS otomatis.',
-              'Mengembangkan model spasial multi-variabel (PP, PT, NK, LS).',
-              'Menghasilkan peta heatmap persebaran dan variabel penelitian.',
-              'Membangun interpolasi IDW untuk permukaan kontinu persepsi.',
-              'Menyusun zona peluang regenerasi pertanian untuk rekomendasi kebijakan.',
-              'Membangun platform WebGIS sebagai sistem pendukung keputusan.',
+              'Menganalisis persepsi Generasi Z terhadap sektor pertanian di Kabupaten Jember.',
+              'Mengubah data persepsi menjadi informasi spasial melalui interpolasi spasial berbasis GIS.',
+              'Memodelkan potensi wilayah pertanian menggunakan citra Sentinel-2 dan data statistik pertanian.',
+              'Mengintegrasikan faktor sosial dan biofisik dalam model geospasial untuk identifikasi wilayah potensial.',
+              'Menghasilkan peta zona peluang regenerasi pertanian sebagai proof of concept TKT 3.',
+              'Menyajikan hasil analisis dalam platform WebGIS untuk mendukung visualisasi dan pengambilan keputusan.'
             ].map((t, i) => (
               <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-slate-50">
                 <CheckCircle2 className="w-5 h-5 text-agro-600 flex-shrink-0 mt-0.5" />
@@ -202,12 +191,36 @@ export default function About() {
           </div>
           <div className="grid md:grid-cols-3 gap-4">
             {[
-              { title: 'Populasi & Sampel', desc: 'Generasi Z usia 14–29 tahun di Kabupaten Jember dengan teknik stratified random sampling per kecamatan.', icon: Users },
-              { title: 'Instrumen', desc: 'Kuesioner online dengan 37 butir pernyataan Skala Likert (1–5), dilengkapi akuisisi GPS otomatis.', icon: BookOpen },
-              { title: 'Analisis Spasial', desc: 'Heatmap density, Inverse Distance Weighting (IDW) interpolation, dan zonasi menggunakan PostGIS & Leaflet.', icon: MapPin },
-              { title: 'Analisis Statistik', desc: 'Uji validitas & reliabilitas (Cronbach Alpha), korelasi Pearson, regresi, dan sensitivity analysis.', icon: Target },
-              { title: 'Teknologi Stack', desc: 'React + Next.js + Tailwind untuk frontend, Laravel API backend, PostgreSQL+PostGIS database.', icon: Code },
-              { title: 'Validasi Model', desc: 'Cross-validation RMSE untuk interpolasi IDW dan uji akurasi titik GPS.', icon: CheckCircle2 },
+              {
+                title: 'Pengumpulan Data Persepsi',
+                desc: 'Survei geotagged berbasis lokasi kepada Generasi Z untuk memperoleh data persepsi terhadap sektor pertanian beserta koordinat geografis responden.',
+                icon: Users
+              },
+              {
+                title: 'Transformasi Data Spasial',
+                desc: 'Data survei diubah menjadi titik spasial menggunakan koordinat GPS sehingga dapat dianalisis dalam lingkungan Sistem Informasi Geografis (SIG).',
+                icon: MapPin
+              },
+              {
+                title: 'Interpolasi Spasial',
+                desc: 'Metode Inverse Distance Weighting (IDW) digunakan untuk membentuk permukaan persepsi Generasi Z dan memetakan pola persebarannya secara spasial.',
+                icon: Target
+              },
+              {
+                title: 'Pemodelan Potensi Pertanian',
+                desc: 'Analisis dilakukan menggunakan citra Sentinel-2, data statistik pertanian time series, dan pengolahan spasial berbasis SIG untuk mengidentifikasi potensi wilayah pertanian.',
+                icon: BookOpen
+              },
+              {
+                title: 'Integrasi Layer Geospasial',
+                desc: 'Layer persepsi Generasi Z dan layer potensi wilayah pertanian diintegrasikan untuk menghasilkan zona peluang regenerasi petani di Kabupaten Jember.',
+                icon: Layers
+              },
+              {
+                title: 'Validasi Model',
+                desc: 'Evaluasi hasil pemodelan dilakukan menggunakan cross-validation dan pengujian akurasi spasial untuk memastikan keandalan hasil analisis.',
+                icon: CheckCircle2
+              }
             ].map((m, i) => {
               const Icon = m.icon;
               return (
@@ -340,7 +353,7 @@ export default function About() {
           </div>
           <div className="bg-white rounded-lg p-4 border-l-4 border-agro-500 text-sm text-slate-600 leading-relaxed font-mono">
             Sutrisno, B., Wulandari, R., Fauzi, A., & Permata, D. (2026). <em>Model Geoinformatika untuk Analisis Persepsi
-            Generasi Z terhadap Potensi Wilayah Lokal dan Peluang Regenerasi Pertanian di Kabupaten Jember.</em>
+            Generasi Z terhadap Potensi Wilayah Lokal Kabupaten Jember.</em>
             Laporan Penelitian. GeoGenZ AgroInsight.
           </div>
         </div>

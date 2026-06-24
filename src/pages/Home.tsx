@@ -70,10 +70,10 @@ export default function Home({ setCurrentPage }: HomeProps) {
   ];
 
   const team = [
-    { name: 'Dr. Ir. Bambang Sutrisno, M.Si.', role: 'Ketua Peneliti', img: '👨‍🏫' },
-    { name: 'Prof. Dr. Rina Wulandari, M.Sc.', role: 'Ahli Geoinformatika', img: '👩‍🏫' },
-    { name: 'Ahmad Fauzi, S.Kom., M.Kom.', role: 'WebGIS Developer', img: '👨‍💻' },
-    { name: 'Dewi Permata, S.P., M.Sc.', role: 'Ahli Pertanian', img: '👩‍🌾' },
+    { name: 'Erik Yohan Kartiko, S.Pd., M.Kom.', role: 'Ketua Peneliti', img: '👨‍🏫' },
+    { name: 'Prof. Dr. Saiful Bukhori, S.T., M.Kom.', role: 'Ahli Intelligent Multimedia System', img: '👩‍🏫' },
+    { name: 'Andre Firmansyah', role: 'Asisten Peneliti', img: '👨‍💻' },
+    { name: 'Randy Putranto', role: 'Asisten Peneliti', img: '👩‍🌾' },
   ];
 
   return (
