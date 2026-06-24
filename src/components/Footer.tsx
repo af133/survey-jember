@@ -19,8 +19,8 @@ export default function Footer() {
               </div>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed max-w-lg mb-4">
-              Platform WebGIS untuk analisis persepsi Generasi Z terhadap potensi wilayah lokal dan peluang regenerasi pertanian
-              di Kabupaten Jember, Jawa Timur. Sistem pendukung keputusan berbasis geospasial.
+              Platform WebGIS untuk analisis persepsi Generasi Z terhadap potensi wilayah lokal
+              di Kabupaten Jember, Jawa Timur.
             </p>
             <div className="flex items-center gap-2 text-sm text-slate-400">
               <GraduationCap className="w-4 h-4" />
