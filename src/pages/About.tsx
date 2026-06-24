@@ -50,7 +50,7 @@ export default function About() {
 
   const team = [
     { name: 'Erik Yohan Kartiko, S.Pd., M.Kom.', role: 'Ketua Peneliti', affiliation: 'Fakultas Ilmu Komputer', img: '👨‍🏫' },
-    { name: 'Prof. Dr. Saiful Bukhori, S.T., M.Kom.', role: 'Ahli Intelligent Multimedia System',  affiliation: 'Fakultas Ilmu Komputer', img: '👩‍🏫' },
+    { name: 'Prof. Dr. Saiful Bukhori, S.T., M.Kom.', role: 'Ahli Intelligent Multimedia System',  affiliation: 'Fakultas Ilmu Komputer', img: '👨‍🏫' },
     { name: 'Andre Firmansyah', role: 'Asisten Peneliti', affiliation: 'Fakultas Ilmu Komputer', img: '👨‍💻' },
     { name: 'Randy Putranto', role: 'Asisten Peneliti', affiliation: 'Fakultas Ilmu Komputer', img: '👨‍💻' },
   ];
