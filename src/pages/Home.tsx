@@ -102,7 +102,7 @@ export default function Home({ setCurrentPage }: HomeProps) {
                 GeoGenZ <span className="text-agro-400">AgroInsight</span>
               </h1>
               <p className="text-lg md:text-xl text-slate-200 leading-relaxed mb-8 max-w-xl">
-                Platform WebGIS untuk Analisis Persepsi Generasi Z dan Peluang Regenerasi Pertanian
+                Platform WebGIS untuk Analisis Persepsi Generasi Z terhadap Potensi Wilayah Lokal Kabupaten Jember
                 <span className="text-agro-300 font-semibold"> Kabupaten Jember</span>
               </p>
               <div className="flex flex-wrap gap-3">

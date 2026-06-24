@@ -214,11 +214,6 @@ export default function About() {
                 title: 'Integrasi Layer Geospasial',
                 desc: 'Layer persepsi Generasi Z dan layer potensi wilayah pertanian diintegrasikan untuk menghasilkan zona peluang regenerasi petani di Kabupaten Jember.',
                 icon: Layers
-              },
-              {
-                title: 'Validasi Model',
-                desc: 'Evaluasi hasil pemodelan dilakukan menggunakan cross-validation dan pengujian akurasi spasial untuk memastikan keandalan hasil analisis.',
-                icon: CheckCircle2
               }
             ].map((m, i) => {
               const Icon = m.icon;
@@ -351,7 +346,7 @@ export default function About() {
             <h2 className="font-display font-bold text-xl text-slate-900">Sitasi Penelitian</h2>
           </div>
           <div className="bg-white rounded-lg p-4 border-l-4 border-agro-500 text-sm text-slate-600 leading-relaxed font-mono">
-            Sutrisno, B., Wulandari, R., Fauzi, A., & Permata, D. (2026). <em>Model Geoinformatika untuk Analisis Persepsi
+            Kartiko, E. Y., Bukhori, S., Firmansyah, A., & Putranto, R. (2026). <em>Model Geoinformatika untuk Analisis Persepsi
             Generasi Z terhadap Potensi Wilayah Lokal Kabupaten Jember.</em>
             Laporan Penelitian. GeoGenZ AgroInsight.
           </div>
