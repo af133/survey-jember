@@ -48,7 +48,7 @@ export default function Footer() {
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-agro-400" />
-                <span>geogenz@unej.ac.id</span>
+                <span>erikyohan@unej.ac.id</span>
               </li>
               <li className="flex items-center gap-2">
                 <Code2 className="w-4 h-4 text-agro-400" />
