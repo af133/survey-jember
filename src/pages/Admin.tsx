@@ -83,7 +83,7 @@ export default function Admin() {
     e.preventDefault();
     setLoginError('');
 
-    if (username === 'admin' && password === 'admin') {
+    if (username === 'admin@geogenz.com' && password === '@GeogenzPassword123') {
       setLoggedIn(true);
       localStorage.setItem('admin_logged_in', 'true');
       return;
