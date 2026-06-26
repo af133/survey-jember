@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { AuthProvider } from './context/AuthContext';
 import Navbar from './components/Navbar';
-import Footer from './components/Footer';
+import Footer from './components/Footer'; 
 import Home from './pages/Home';
 import About from './pages/About';
 import Survey from './pages/Survey';
@@ -9,7 +10,7 @@ import InteractiveMap from './pages/InteractiveMap';
 import Analysis from './pages/Analysis';
 import Admin from './pages/Admin';
 
-export default function App() {
+function AppContent() {
   const [currentPage, setCurrentPage] = useState('home');
 
   const renderPage = () => {
@@ -33,5 +34,13 @@ export default function App() {
       </main>
       <Footer />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
