@@ -84,14 +84,15 @@ export default function Admin() {
     setLoginError('');
 
     if (username === 'admin@geogenz.com' && password === '@GeogenzPassword123') {
-      setLoggedIn(true);
       localStorage.setItem('admin_logged_in', 'true');
+      window.location.reload();
       return;
     }
 
     try {
       setLoading(true);
       await signInWithEmailAndPassword(auth, username, password);
+      window.location.reload();
     } catch (error: any) {
       console.error('Gagal login ke Firebase:', error);
       let errorMsg = 'Email atau password salah.';
@@ -101,7 +102,6 @@ export default function Admin() {
         errorMsg = 'Koneksi internet bermasalah. Periksa koneksi Anda.';
       }
       setLoginError(errorMsg);
-    } finally {
       setLoading(false);
     }
   };
@@ -113,7 +113,7 @@ export default function Admin() {
       console.error('Gagal keluar dari Firebase Auth:', error);
     }
     localStorage.removeItem('admin_logged_in');
-    setLoggedIn(false);
+    window.location.reload();
   };
 
   const handleSeed = async () => {
@@ -577,10 +577,20 @@ export default function Admin() {
               </div>
               <button
                 type="submit"
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-gradient-to-r from-agro-600 to-agro-700 hover:from-agro-500 hover:to-agro-600 text-white font-semibold transition-all shadow-md"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-gradient-to-r from-agro-600 to-agro-700 hover:from-agro-500 hover:to-agro-600 text-white font-semibold transition-all shadow-md disabled:opacity-60"
               >
-                <LogIn className="w-4 h-4" />
-                Masuk ke Admin
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Memproses...
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="w-4 h-4" />
+                    Masuk ke Admin
+                  </>
+                )}
               </button>
             </form>
           </div>
