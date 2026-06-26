@@ -199,8 +199,8 @@ export default function Home({ setCurrentPage }: HomeProps) {
             </div>
             <div className="grid grid-cols-2 gap-4">
               {[
-                { title: 'Populasi Gen Z', value: '32%', sub: 'dari total penduduk Jember' },
-                { title: 'Penurunan Petani Muda', value: '-4.2%', sub: 'per tahun (BPS 2024)' },
+                { title: 'Total Penduduk', value: '2.625.429', sub: 'Jiwa (Data BPS 2026)' },
+                { title: 'Rentang Usia 15-29', value: '565.208', sub: 'Jiwa (Generasi Z)' },
                 { title: 'Lahan Pertanian', value: '42%', sub: 'dari luas wilayah' },
                 { title: 'Potensi Digital', value: '87%', sub: 'Gen Z aktif di teknologi' },
               ].map((c, i) => (
