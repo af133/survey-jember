@@ -201,7 +201,7 @@ export default function Home({ setCurrentPage }: HomeProps) {
               {[
                 { title: 'Total Penduduk', value: '2.625.429', sub: 'Jiwa (Data BPS 2026)' },
                 { title: 'Rentang Usia 15-29', value: '565.208', sub: 'Jiwa (Generasi Z)' },
-                { title: 'Lahan Pertanian', value: '42%', sub: 'dari luas wilayah' },
+                { title: 'Luas Panen Pertanian', value: '1.979.068', sub: 'Hektar (BAPPERIDA 2024)' },
                 { title: 'Potensi Digital', value: '87%', sub: 'Gen Z aktif di teknologi' },
               ].map((c, i) => (
                 <div key={i} className="dash-card p-5">
