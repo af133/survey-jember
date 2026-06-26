@@ -31,9 +31,15 @@ ChartJS.defaults.font.family = "'Inter', sans-serif";
 ChartJS.defaults.color = '#475569';
 
 export default function Dashboard() {
-  const [respondents, setRespondents] = useState<Respondent[]>([]);
+  const [allRespondents, setRespondents] = useState<Respondent[]>([]);
+  const [filterKecamatan, setFilterKecamatan] = useState<string>('All');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+
+  const respondents = useMemo(() => {
+    if (filterKecamatan === 'All') return allRespondents;
+    return allRespondents.filter(r => r.kecamatan === filterKecamatan);
+  }, [allRespondents, filterKecamatan]);
 
   useEffect(() => {
     async function loadData() {
@@ -189,7 +195,7 @@ export default function Dashboard() {
     );
   }
 
-  if (respondents.length === 0) {
+  if (allRespondents.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
         <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
@@ -221,14 +227,21 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <button className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium">
-                <Filter className="w-4 h-4" />
-                Filter
-              </button>
-              <button className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-agro-600 text-white hover:bg-agro-700 text-sm font-medium">
-                <Download className="w-4 h-4" />
-                Export
-              </button>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                </div>
+                <select 
+                  value={filterKecamatan}
+                  onChange={(e) => setFilterKecamatan(e.target.value)}
+                  className="pl-9 pr-8 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium appearance-none outline-none focus:ring-2 focus:ring-agro-500 bg-white"
+                >
+                  <option value="All">Semua Kecamatan</option>
+                  {Array.from(new Set(allRespondents.map(r => r.kecamatan))).sort().map(kec => (
+                    <option key={kec} value={kec}>{kec}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>

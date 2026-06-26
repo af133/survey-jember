@@ -508,7 +508,6 @@ export default function InteractiveMap() {
                   </div>
                 </div>
                 <div className="space-y-1.5 text-xs">
-                  <InfoRow label="Nama" value={selectedR.nama} />
                   <InfoRow label="Usia" value={`${selectedR.usia} tahun`} />
                   <InfoRow label="Jenis Kelamin" value={selectedR.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'} />
                   <InfoRow label="Kecamatan" value={selectedR.kecamatan} />
