@@ -114,13 +114,7 @@ export default function Home({ setCurrentPage }: HomeProps) {
                   Isi Survei
                   <ChevronRight className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={() => setCurrentPage('dashboard')}
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 text-white font-semibold transition-all hover:-translate-y-0.5"
-                >
-                  <BarChart3 className="w-5 h-5" />
-                  Lihat Dashboard
-                </button>
+                
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-10 pt-8 border-t border-white/10">
                 {stats.map((s, i) => {
@@ -290,14 +284,6 @@ export default function Home({ setCurrentPage }: HomeProps) {
                 Penelitian ini menghasilkan berbagai luaran ilmiah dan sistem yang dapat digunakan oleh pemangku kebijakan,
                 peneliti, dan masyarakat untuk mendukung regenerasi pertanian Kabupaten Jember.
               </p>
-              <button
-                onClick={() => setCurrentPage('map')}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-agro-700 font-semibold hover:bg-agro-50 transition-colors"
-              >
-                <MapIcon className="w-4 h-4" />
-                Jelajahi Peta
-                <ArrowRight className="w-4 h-4" />
-              </button>
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
               {outputs.map((o, i) => (
