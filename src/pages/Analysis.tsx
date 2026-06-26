@@ -10,7 +10,7 @@ import {
 } from 'chart.js';
 import { Scatter, Line } from 'react-chartjs-2';
 import { Respondent } from '../data/mockData';
-import { getRespondentsFromFirestore } from '../utils/firebase';
+import { getRespondentsFromFirestore, checkAdminAuth } from '../utils/firebase';
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, PointElement, LineElement,
@@ -38,6 +38,15 @@ export default function Analysis() {
       }
     }
     loadData();
+  }, []);
+
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    setIsAdmin(localStorage.getItem('admin_logged_in') === 'true');
+    const unsub = checkAdminAuth((user) => {
+      setIsAdmin(!!user || localStorage.getItem('admin_logged_in') === 'true');
+    });
+    return () => unsub();
   }, []);
 
   // Correlation matrix between variables — hooks MUST come before any early return
@@ -496,7 +505,30 @@ export default function Analysis() {
           </div>
         </div>
 
-
+        {/* Download buttons - Admin Only */}
+        {isAdmin && (
+          <div className="dash-card p-5">
+            <h2 className="font-display font-bold text-lg text-slate-900 mb-3">Unduh Hasil Analisis</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Laporan Lengkap (PDF)', icon: FileSpreadsheet, color: 'bg-red-500' },
+                { label: 'Dataset (CSV)', icon: FileSpreadsheet, color: 'bg-blue-500' },
+                { label: 'Tabel Statistik (Excel)', icon: FileSpreadsheet, color: 'bg-green-600' },
+                { label: 'Peta (GeoJSON)', icon: FileSpreadsheet, color: 'bg-purple-500' },
+              ].map((b, i) => {
+                const Icon = b.icon;
+                return (
+                  <button key={i} className="flex items-center gap-2 px-4 py-3 rounded-lg border border-slate-200 hover:border-agro-300 hover:bg-agro-50 transition-colors text-left">
+                    <div className={`w-8 h-8 rounded-md ${b.color} flex items-center justify-center flex-shrink-0`}>
+                      <Icon className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="text-sm font-medium text-slate-700">{b.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
