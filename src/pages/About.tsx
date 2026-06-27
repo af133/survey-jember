@@ -56,12 +56,12 @@ export default function About() {
   ];
 
   const outputs = [
-    { label: 'Jurnal Internasional Bereputasi', count: '2 artikel' },
-    { label: 'Prosiding Seminar Nasional', count: '1 artikel' },
-    { label: 'Platform WebGIS Open Source', count: '1 sistem' },
-    { label: 'Dataset Spasial Terbuka', count: '1 paket' },
-    { label: 'Peta Tematik Zonasi', count: '4 lembar peta' },
-    { label: 'Buku Ajar / Modul', count: '1 buku' },
+    { label: ' Artikel Jurnal Nasional Terakretasi', count: '1 artikel' },
+    { label: ' HKI Platform Webgis' },
+    { label: 'Peta Tematik' },
+    // { label: 'Dataset Spasial Terbuka', count: '1 paket' },
+    // { label: 'Peta Tematik Zonasi', count: '4 lembar peta' },
+    // { label: 'Buku Ajar / Modul', count: '1 buku' },
   ];
 
   return (
