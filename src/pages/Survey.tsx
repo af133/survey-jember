@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   ClipboardList, MapPin, User, CheckCircle2, ChevronLeft,
   ChevronRight, Loader2, Send, Check, Leaf, Lock,
-  Navigation, AlertTriangle
+  Navigation, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import { SURVEY_SECTIONS, KECAMATAN_LIST, Respondent } from '../data/mockData';
 import { saveRespondentToFirestore } from '../utils/firebase';
@@ -17,11 +17,55 @@ const LIKERT_LABELS = [
 
 const LIKERT_FULL = ['Sangat Tidak Setuju', 'Tidak Setuju', 'Netral', 'Setuju', 'Sangat Setuju'];
 
+// Koordinat fallback: pusat Kabupaten Jember
+const FALLBACK_LAT = -8.1721;
+const FALLBACK_LNG = 113.6996;
+
+// ─── GPS helper ──────────────────────────────────────────────────────────────
+type GpsStatus = 'idle' | 'loading' | 'success' | 'denied' | 'unavailable' | 'timeout' | 'error';
+
+function getGpsErrorStatus(err: GeolocationPositionError): GpsStatus {
+  switch (err.code) {
+    case err.PERMISSION_DENIED: return 'denied';
+    case err.POSITION_UNAVAILABLE: return 'unavailable';
+    case err.TIMEOUT: return 'timeout';
+    default: return 'error';
+  }
+}
+
+function gpsStatusMessage(status: GpsStatus): { text: string; isWarning: boolean } {
+  switch (status) {
+    case 'loading':
+      return { text: 'Mendapatkan lokasi GPS...', isWarning: false };
+    case 'success':
+      return { text: 'GPS berhasil terkunci.', isWarning: false };
+    case 'denied':
+      return {
+        text: 'Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan browser/perangkat Anda, lalu tekan "Coba Lagi".',
+        isWarning: true,
+      };
+    case 'unavailable':
+      return {
+        text: 'Sinyal GPS tidak tersedia. Pastikan GPS/Location Service aktif di perangkat Anda.',
+        isWarning: true,
+      };
+    case 'timeout':
+      return {
+        text: 'GPS timeout. Sinyal lemah atau GPS belum aktif. Tekan "Coba Lagi" setelah memastikan GPS aktif.',
+        isWarning: true,
+      };
+    default:
+      return { text: 'Gagal mendapatkan lokasi. Koordinat default Jember digunakan.', isWarning: true };
+  }
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
 export default function Survey() {
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
-  const [gpsLoading, setGpsLoading] = useState(true);
-  const [gpsError, setGpsError] = useState<string | null>(null);
+
+  const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
   const [responses, setResponses] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -39,57 +83,78 @@ export default function Survey() {
     jarakLahan: '',
   });
 
-  useEffect(() => {
-    setGpsLoading(true);
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setIdentitas((p) => ({
-            ...p,
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude
-          }));
-          setGpsLoading(false);
-        },
-        () => {
-          setGpsError('Akses GPS ditolak. Koordinat akan menggunakan lokasi pusat Jember.');
-          setIdentitas((p) => ({
-            ...p,
-            latitude: -8.1721,
-            longitude: 113.6996
-          }));
-          setGpsLoading(false);
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    } else {
-      setGpsError('Browser tidak mendukung GPS.');
-      setIdentitas((p) => ({ ...p, latitude: -8.1721, longitude: 113.6996 }));
-      setGpsLoading(false);
+  // ─── GPS: dibungkus useCallback agar bisa dipanggil ulang (retry) ───────
+  const requestGps = useCallback(() => {
+    // Cek support
+    if (!navigator.geolocation) {
+      setGpsStatus('unavailable');
+      setIdentitas(p => ({ ...p, latitude: FALLBACK_LAT, longitude: FALLBACK_LNG }));
+      return;
     }
+
+    setGpsStatus('loading');
+
+    // Opsi: enableHighAccuracy butuh izin penuh di iOS/Android Chrome
+    // maximumAge: 0 → jangan gunakan cache lokasi lama
+    // timeout: 15000 → beri waktu lebih panjang untuk perangkat lambat
+    const options: PositionOptions = {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0,
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setIdentitas(p => ({
+          ...p,
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        }));
+        setGpsStatus('success');
+      },
+      (err) => {
+        const status = getGpsErrorStatus(err);
+        setGpsStatus(status);
+
+        // Selalu set fallback agar form bisa dilanjutkan
+        setIdentitas(p => ({
+          ...p,
+          latitude: p.latitude ?? FALLBACK_LAT,  // jangan overwrite kalau sudah ada koordinat
+          longitude: p.longitude ?? FALLBACK_LNG,
+        }));
+      },
+      options,
+    );
   }, []);
 
-  const respondentId = `R-${String(Math.floor(Math.random() * 9000) + 1000)}`;
-  const timestamp = new Date().toISOString();
+  // Panggil GPS saat pertama kali mount
+  useEffect(() => {
+    requestGps();
+  }, [requestGps]);
+
+  // ─── Fixed respondent ID & timestamp (pakai useState agar tidak re-render) ─
+  const [respondentId] = useState(() => `R-${String(Math.floor(Math.random() * 9000) + 1000)}`);
+  const [timestamp] = useState(() => new Date().toISOString());
 
   const sections = ['PP', 'PT', 'NK', 'LS', 'EXP', 'DIG'] as const;
-
-  const totalSteps = 8; // intro, identitas, PP, PT, NK, LS, EXP, DIG, review (we'll use 8 total)
+  const totalSteps = 8;
 
   const setResponse = (key: string, val: number) => {
-    setResponses((p) => ({ ...p, [key]: val }));
+    setResponses(p => ({ ...p, [key]: val }));
   };
 
   const sectionComplete = (sectionKey: string) => {
     const sec = SURVEY_SECTIONS[sectionKey as keyof typeof SURVEY_SECTIONS];
-    return sec.items.every((it) => responses[it.id] !== undefined);
+    return sec.items.every(it => responses[it.id] !== undefined);
   };
 
   const canProceed = () => {
     if (step === 1) {
-      return identitas.nama && identitas.usia && identitas.jenisKelamin &&
-             identitas.pendidikan && identitas.kecamatan && identitas.desa &&
-             identitas.wilayahTinggal && identitas.luasPertanian && identitas.jarakLahan;
+      return !!(
+        identitas.nama && identitas.usia && identitas.jenisKelamin &&
+        identitas.pendidikan && identitas.kecamatan && identitas.desa &&
+        identitas.wilayahTinggal && identitas.luasPertanian && identitas.jarakLahan
+      );
     }
     if (step >= 2 && step <= 7) {
       const key = sections[step - 2];
@@ -100,15 +165,15 @@ export default function Survey() {
 
   const calculateScores = () => {
     const avg = (ids: string[]) => {
-      const vals = ids.map((id) => responses[id]).filter((v) => v !== undefined);
+      const vals = ids.map(id => responses[id]).filter(v => v !== undefined);
       return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
     };
-    const pp = avg(SURVEY_SECTIONS.PP.items.map((i) => i.id));
-    const pt = avg(SURVEY_SECTIONS.PT.items.map((i) => i.id));
-    const nk = avg(SURVEY_SECTIONS.NK.items.map((i) => i.id));
-    const ls = avg(SURVEY_SECTIONS.LS.items.map((i) => i.id));
-    const exp = avg(SURVEY_SECTIONS.EXP.items.map((i) => i.id));
-    const dig = avg(SURVEY_SECTIONS.DIG.items.map((i) => i.id));
+    const pp  = avg(SURVEY_SECTIONS.PP.items.map(i => i.id));
+    const pt  = avg(SURVEY_SECTIONS.PT.items.map(i => i.id));
+    const nk  = avg(SURVEY_SECTIONS.NK.items.map(i => i.id));
+    const ls  = avg(SURVEY_SECTIONS.LS.items.map(i => i.id));
+    const exp = avg(SURVEY_SECTIONS.EXP.items.map(i => i.id));
+    const dig = avg(SURVEY_SECTIONS.DIG.items.map(i => i.id));
     const final = (pp + pt + nk + ls) / 4;
     return { pp, pt, nk, ls, exp, dig, final };
   };
@@ -117,10 +182,11 @@ export default function Survey() {
     try {
       setSubmitting(true);
       const scores = calculateScores();
-      const cat = scores.final <= 1.8 ? 'Sangat Rendah'
-        : scores.final <= 2.6 ? 'Rendah'
-        : scores.final <= 3.4 ? 'Sedang'
-        : scores.final <= 4.2 ? 'Tinggi' : 'Sangat Tinggi';
+      const cat =
+        scores.final <= 1.8 ? 'Sangat Rendah' :
+        scores.final <= 2.6 ? 'Rendah' :
+        scores.final <= 3.4 ? 'Sedang' :
+        scores.final <= 4.2 ? 'Tinggi' : 'Sangat Tinggi';
 
       const surveyData: Respondent = {
         id: respondentId,
@@ -130,8 +196,8 @@ export default function Survey() {
         pendidikan: identitas.pendidikan,
         kecamatan: identitas.kecamatan,
         desa: identitas.desa,
-        latitude: identitas.latitude || -8.1721,
-        longitude: identitas.longitude || 113.6996,
+        latitude: identitas.latitude ?? FALLBACK_LAT,
+        longitude: identitas.longitude ?? FALLBACK_LNG,
         timestamp,
         pp: parseFloat(scores.pp.toFixed(2)),
         pt: parseFloat(scores.pt.toFixed(2)),
@@ -150,19 +216,71 @@ export default function Survey() {
       setSubmitted(true);
       window.scrollTo(0, 0);
     } catch (e) {
-      console.error("Error submitting survey: ", e);
-      alert("Gagal mengirim survei ke database: " + (e as Error).message);
+      console.error('Error submitting survey: ', e);
+      alert('Gagal mengirim survei ke database: ' + (e as Error).message);
     } finally {
       setSubmitting(false);
     }
   };
 
+  // ─── GPS Status UI ────────────────────────────────────────────────────────
+  const GpsStatusBox = () => {
+    const { text, isWarning } = gpsStatusMessage(gpsStatus);
+    return (
+      <div className={`p-4 rounded-xl border mb-6 ${
+        isWarning ? 'bg-orange-50 border-orange-200' : 'bg-agro-50 border-agro-200'
+      }`}>
+        <div className="flex items-center gap-2 mb-2">
+          <MapPin className={`w-4 h-4 ${isWarning ? 'text-orange-700' : 'text-agro-700'}`} />
+          <span className={`font-semibold text-sm ${isWarning ? 'text-orange-900' : 'text-agro-900'}`}>Status GPS</span>
+        </div>
+
+        {gpsStatus === 'loading' ? (
+          <div className="flex items-center gap-2 text-sm text-agro-700">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {text}
+          </div>
+        ) : gpsStatus === 'success' ? (
+          <div className="flex items-center gap-2 text-sm text-agro-700">
+            <Check className="w-4 h-4" />
+            GPS terkunci:{' '}
+            <span className="font-mono font-semibold">
+              {identitas.latitude?.toFixed(5)}, {identitas.longitude?.toFixed(5)}
+            </span>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 text-sm text-orange-800">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{text}</span>
+            </div>
+            {identitas.latitude && (
+              <div className="text-xs text-orange-700 font-mono">
+                Koordinat fallback: {identitas.latitude.toFixed(5)}, {identitas.longitude?.toFixed(5)}
+              </div>
+            )}
+            <button
+              onClick={requestGps}
+              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-100 text-orange-800 border border-orange-300 text-xs font-semibold hover:bg-orange-200 transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Coba Lagi
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ─── Success screen ───────────────────────────────────────────────────────
   if (submitted) {
     const scores = calculateScores();
-    const cat = scores.final <= 1.8 ? 'Sangat Rendah'
-      : scores.final <= 2.6 ? 'Rendah'
-      : scores.final <= 3.4 ? 'Sedang'
-      : scores.final <= 4.2 ? 'Tinggi' : 'Sangat Tinggi';
+    const cat =
+      scores.final <= 1.8 ? 'Sangat Rendah' :
+      scores.final <= 2.6 ? 'Rendah' :
+      scores.final <= 3.4 ? 'Sedang' :
+      scores.final <= 4.2 ? 'Tinggi' : 'Sangat Tinggi';
+
     return (
       <div className="min-h-screen bg-slate-50 py-12 px-4">
         <div className="max-w-2xl mx-auto">
@@ -183,7 +301,10 @@ export default function Survey() {
                 <div className="text-slate-500">Kecamatan:</div>
                 <div className="font-semibold text-slate-900">{identitas.kecamatan}</div>
                 <div className="text-slate-500">Koordinat GPS:</div>
-                <div className="font-mono text-xs text-slate-700">{identitas.latitude?.toFixed(5)}, {identitas.longitude?.toFixed(5)}</div>
+                <div className="font-mono text-xs text-slate-700">
+                  {identitas.latitude?.toFixed(5)}, {identitas.longitude?.toFixed(5)}
+                  {gpsStatus !== 'success' && <span className="ml-1 text-orange-500">(fallback)</span>}
+                </div>
                 <div className="text-slate-500">Skor Akhir:</div>
                 <div className="font-bold text-agro-700">{scores.final.toFixed(2)}</div>
                 <div className="text-slate-500">Kategori:</div>
@@ -197,7 +318,16 @@ export default function Survey() {
               </div>
             </div>
             <button
-              onClick={() => { setStep(0); setSubmitted(false); setResponses({}); setIdentitas({ nama: '', usia: '', jenisKelamin: '', pendidikan: '', kecamatan: '', desa: '', latitude: null, longitude: null, wilayahTinggal: '', luasPertanian: '', jarakLahan: '' }); }}
+              onClick={() => {
+                setStep(0);
+                setSubmitted(false);
+                setResponses({});
+                setIdentitas({
+                  nama: '', usia: '', jenisKelamin: '', pendidikan: '',
+                  kecamatan: '', desa: '', latitude: null, longitude: null,
+                  wilayahTinggal: '', luasPertanian: '', jarakLahan: '',
+                });
+              }}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-agro-600 text-white font-semibold hover:bg-agro-700 transition-colors"
             >
               <Leaf className="w-4 h-4" />
@@ -209,6 +339,7 @@ export default function Survey() {
     );
   }
 
+  // ─── Main form ────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50 py-6 md:py-10">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -256,6 +387,7 @@ export default function Survey() {
 
         {/* Content */}
         <div className="dash-card p-6 md:p-8">
+
           {/* Step 0: Intro */}
           {step === 0 && (
             <div>
@@ -268,6 +400,7 @@ export default function Survey() {
                   <p className="text-sm text-slate-500">Mohon baca sebelum memulai</p>
                 </div>
               </div>
+
               <div className="space-y-3 text-sm text-slate-600 leading-relaxed mb-6">
                 <p>
                   Terima kasih atas kesediaan Anda berpartisipasi dalam penelitian ini. Berikut adalah petunjuk pengisian kuesioner:
@@ -288,32 +421,20 @@ export default function Survey() {
                 </ul>
               </div>
 
-              <div className="p-4 rounded-xl bg-agro-50 border border-agro-200 mb-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <MapPin className="w-4 h-4 text-agro-700" />
-                  <span className="font-semibold text-agro-900 text-sm">Status GPS</span>
+              {/* GPS Status Box di intro */}
+              <GpsStatusBox />
+
+              {/* Panduan izin GPS per device */}
+              {(gpsStatus === 'denied' || gpsStatus === 'unavailable') && (
+                <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 mb-4 text-sm text-blue-800 space-y-1">
+                  <p className="font-semibold mb-2">📱 Cara mengaktifkan izin lokasi:</p>
+                  <p><span className="font-semibold">Android Chrome:</span> Ketuk ikon gembok di address bar → Izin Situs → Lokasi → Izinkan</p>
+                  <p><span className="font-semibold">iPhone Safari:</span> Pengaturan → Safari → Lokasi → Izinkan</p>
+                  <p><span className="font-semibold">iPhone Chrome:</span> Pengaturan → Chrome → Lokasi → Izinkan</p>
+                  <p><span className="font-semibold">Desktop:</span> Klik ikon lokasi di address bar → Izinkan</p>
+                  <p className="text-xs text-blue-600 mt-2">Setelah mengaktifkan, tekan tombol "Coba Lagi" di kotak GPS di atas.</p>
                 </div>
-                {gpsLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-agro-700">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Mendapatkan lokasi GPS...
-                  </div>
-                ) : (
-                  <div className="text-sm">
-                    {gpsError ? (
-                      <div className="flex items-start gap-2 text-orange-700">
-                        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                        <span>{gpsError}</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 text-agro-700">
-                        <Check className="w-4 h-4" />
-                        <span>GPS terkunci: <span className="font-mono font-semibold">{identitas.latitude?.toFixed(5)}, {identitas.longitude?.toFixed(5)}</span></span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           )}
 
@@ -410,22 +531,64 @@ export default function Survey() {
                   />
                 </div>
 
+                {/* GPS panel di step identitas */}
                 <div className="md:col-span-2 p-3 rounded-lg bg-slate-50 border border-slate-200">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 mb-1">
-                    <Navigation className="w-3.5 h-3.5" />
-                    KOORDINAT GPS (OTOMATIS)
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                      <Navigation className="w-3.5 h-3.5" />
+                      KOORDINAT GPS (OTOMATIS)
+                    </div>
+                    {gpsStatus !== 'success' && gpsStatus !== 'loading' && (
+                      <button
+                        onClick={requestGps}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-300 transition-colors"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Coba Lagi
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3 mt-2">
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Latitude</label>
-                      <input type="text" value={identitas.latitude?.toFixed(6) || 'Memuat...'} disabled className="w-full px-3 py-1.5 rounded border border-slate-200 bg-white font-mono text-xs" />
+                      <input
+                        type="text"
+                        value={
+                          gpsStatus === 'loading' ? 'Memuat...' :
+                          identitas.latitude ? identitas.latitude.toFixed(6) : '-'
+                        }
+                        disabled
+                        className="w-full px-3 py-1.5 rounded border border-slate-200 bg-white font-mono text-xs"
+                      />
                     </div>
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Longitude</label>
-                      <input type="text" value={identitas.longitude?.toFixed(6) || 'Memuat...'} disabled className="w-full px-3 py-1.5 rounded border border-slate-200 bg-white font-mono text-xs" />
+                      <input
+                        type="text"
+                        value={
+                          gpsStatus === 'loading' ? 'Memuat...' :
+                          identitas.longitude ? identitas.longitude.toFixed(6) : '-'
+                        }
+                        disabled
+                        className="w-full px-3 py-1.5 rounded border border-slate-200 bg-white font-mono text-xs"
+                      />
                     </div>
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-2">Timestamp: {new Date(timestamp).toLocaleString('id-ID')}</div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      gpsStatus === 'success' ? 'bg-green-500' :
+                      gpsStatus === 'loading' ? 'bg-yellow-400 animate-pulse' :
+                      'bg-orange-400'
+                    }`}></div>
+                    <span className="text-[11px] text-slate-400">
+                      {gpsStatus === 'success' ? 'GPS aktif' :
+                       gpsStatus === 'loading' ? 'Menunggu GPS...' :
+                       'Koordinat fallback (pusat Jember)'}
+                    </span>
+                    <span className="text-[11px] text-slate-400 ml-auto">
+                      {new Date(timestamp).toLocaleString('id-ID')}
+                    </span>
+                  </div>
                 </div>
 
                 <div>
@@ -476,7 +639,7 @@ export default function Survey() {
             </div>
           )}
 
-          {/* Section steps (2-7) */}
+          {/* Section steps 2–7 */}
           {step >= 2 && step <= 7 && (() => {
             const key = sections[step - 2];
             const sec = SURVEY_SECTIONS[key];
@@ -484,11 +647,11 @@ export default function Survey() {
               <div>
                 <div className="flex items-center gap-3 mb-5">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-display font-black text-white text-lg ${
-                    key === 'PP' ? 'bg-gradient-to-br from-agro-500 to-emerald-600' :
-                    key === 'PT' ? 'bg-gradient-to-br from-blue-500 to-cyan-600' :
-                    key === 'NK' ? 'bg-gradient-to-br from-amber-500 to-orange-600' :
-                    key === 'LS' ? 'bg-gradient-to-br from-earth-500 to-earth-700' :
-                    key === 'EXP' ? 'bg-gradient-to-br from-purple-500 to-fuchsia-600' :
+                    key === 'PP'  ? 'bg-gradient-to-br from-agro-500 to-emerald-600'  :
+                    key === 'PT'  ? 'bg-gradient-to-br from-blue-500 to-cyan-600'     :
+                    key === 'NK'  ? 'bg-gradient-to-br from-amber-500 to-orange-600'  :
+                    key === 'LS'  ? 'bg-gradient-to-br from-earth-500 to-earth-700'   :
+                    key === 'EXP' ? 'bg-gradient-to-br from-purple-500 to-fuchsia-600':
                     'bg-gradient-to-br from-teal-500 to-cyan-600'
                   }`}>
                     {key}
@@ -525,7 +688,7 @@ export default function Survey() {
                                 <button
                                   key={l.value}
                                   onClick={() => setResponse(item.id, l.value)}
-                                  className={`likert-btn py-1.5 rounded-md border-2 text-xs font-bold transition-all ${
+                                  className={`py-1.5 rounded-md border-2 text-xs font-bold transition-all ${
                                     selected
                                       ? `${l.color} ring-2 ring-offset-1 ring-agro-400 border-transparent scale-105`
                                       : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600'
@@ -545,7 +708,7 @@ export default function Survey() {
             );
           })()}
 
-          {/* Nav */}
+          {/* Navigation */}
           <div className="flex items-center justify-between mt-8 pt-5 border-t border-slate-100">
             <button
               onClick={() => setStep(Math.max(0, step - 1))}
