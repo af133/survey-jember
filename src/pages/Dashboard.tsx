@@ -44,7 +44,7 @@ function exportRespondentsToCsv(
   const headers: { key: string; label: string }[] = [
     // Identitas
     { key: 'id',           label: 'ID Responden' },
-    { key: 'namaLengkap',  label: 'Nama Lengkap' },
+    { key: 'nama          ',  label: 'Nama Lengkap' },
     { key: 'jenisKelamin', label: 'Jenis Kelamin' },
     { key: 'usia',         label: 'Usia' },
     { key: 'pendidikan',   label: 'Pendidikan Terakhir' },
