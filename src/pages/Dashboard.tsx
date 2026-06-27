@@ -30,11 +30,119 @@ ChartJS.register(
 ChartJS.defaults.font.family = "'Inter', sans-serif";
 ChartJS.defaults.color = '#475569';
 
+// ─── CSV Export Utility ────────────────────────────────────────────────────────
+
+function exportRespondentsToCsv(
+  respondents: Respondent[],
+  filename = 'data-responden-jember.csv'
+): void {
+  if (respondents.length === 0) {
+    alert('Tidak ada data untuk diekspor.');
+    return;
+  }
+
+  const headers: { key: string; label: string }[] = [
+    // Identitas
+    { key: 'id',           label: 'ID Responden' },
+    { key: 'namaLengkap',  label: 'Nama Lengkap' },
+    { key: 'jenisKelamin', label: 'Jenis Kelamin' },
+    { key: 'usia',         label: 'Usia' },
+    { key: 'pendidikan',   label: 'Pendidikan Terakhir' },
+    // Lokasi
+    { key: 'kecamatan',    label: 'Kecamatan' },
+    { key: 'desa',         label: 'Desa/Kelurahan' },
+    { key: 'latitude',     label: 'Latitude' },
+    { key: 'longitude',    label: 'Longitude' },
+    // Skor variabel
+    { key: 'pp',           label: 'Skor PP (Persepsi Pertanian)' },
+    { key: 'pt',           label: 'Skor PT (Teknologi Pertanian)' },
+    { key: 'nk',           label: 'Skor NK (Niat Keterlibatan)' },
+    { key: 'ls',           label: 'Skor LS (Lingkungan Spasial)' },
+    // Hasil akhir
+    { key: 'finalScore',   label: 'Skor Akhir' },
+    { key: 'kategori',     label: 'Kategori' },
+    // Computed
+    { key: '_gpsValid',    label: 'GPS Valid' },
+    { key: 'createdAt',    label: 'Tanggal Isi' },
+  ];
+
+  const escapeCell = (value: unknown): string => {
+    if (value === null || value === undefined) return '';
+    const str = String(value);
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const isGpsValid = (r: Respondent): boolean =>
+    !!(r.latitude && r.longitude &&
+      r.latitude < -8 && r.latitude > -8.5 &&
+      r.longitude > 113.3 && r.longitude < 114);
+
+  const headerRow = headers.map(h => escapeCell(h.label)).join(',');
+
+  const dataRows = respondents.map(r => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = r as any;
+    return headers.map(h => {
+      switch (h.key) {
+        case '_gpsValid':
+          return escapeCell(isGpsValid(r) ? 'Ya' : 'Tidak');
+        case 'jenisKelamin':
+          return escapeCell(r.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan');
+        case 'createdAt': {
+          const raw = row.createdAt;
+          if (!raw) return '';
+          if (typeof raw === 'object' && 'toDate' in raw) {
+            return escapeCell(raw.toDate().toLocaleString('id-ID'));
+          }
+          if (raw instanceof Date) return escapeCell(raw.toLocaleString('id-ID'));
+          return escapeCell(raw);
+        }
+        case 'latitude':
+        case 'longitude':
+          return escapeCell(
+            typeof row[h.key] === 'number' ? (row[h.key] as number).toFixed(6) : ''
+          );
+        case 'pp':
+        case 'pt':
+        case 'nk':
+        case 'ls':
+        case 'finalScore':
+          return escapeCell(
+            typeof row[h.key] === 'number' ? (row[h.key] as number).toFixed(2) : ''
+          );
+        default:
+          return escapeCell(row[h.key]);
+      }
+    }).join(',');
+  });
+
+  // BOM UTF-8 agar Excel baca karakter Indonesia dengan benar
+  const BOM = '\uFEFF';
+  const blob = new Blob([BOM + [headerRow, ...dataRows].join('\n')], {
+    type: 'text/csv;charset=utf-8;',
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// ─── Dashboard Component ───────────────────────────────────────────────────────
+
 export default function Dashboard() {
   const [allRespondents, setRespondents] = useState<Respondent[]>([]);
   const [filterKecamatan, setFilterKecamatan] = useState<string>('All');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const respondents = useMemo(() => {
     if (filterKecamatan === 'All') return allRespondents;
@@ -59,6 +167,20 @@ export default function Dashboard() {
     loadData();
   }, []);
 
+  const handleExport = () => {
+    setExporting(true);
+    try {
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const suffix =
+        filterKecamatan === 'All'
+          ? 'semua-kecamatan'
+          : filterKecamatan.toLowerCase().replace(/\s+/g, '-');
+      exportRespondentsToCsv(respondents, `responden-jember_${suffix}_${timestamp}.csv`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // === All hooks MUST be declared before any early return ===
   const kpis = useMemo(() => {
     const total = respondents.length;
@@ -66,14 +188,18 @@ export default function Dashboard() {
     const kecamatan = new Set(respondents.map(r => r.kecamatan)).size;
     const desa = new Set(respondents.map(r => r.desa)).size;
     const avgScore = respondents.reduce((sum, r) => sum + r.finalScore, 0) / total;
-    const gpsValid = respondents.filter(r => r.latitude && r.longitude && r.latitude < -8 && r.latitude > -8.5 && r.longitude > 113.3 && r.longitude < 114).length;
+    const gpsValid = respondents.filter(
+      r => r.latitude && r.longitude &&
+        r.latitude < -8 && r.latitude > -8.5 &&
+        r.longitude > 113.3 && r.longitude < 114
+    ).length;
     return [
-      { label: 'Total Responden', value: total, icon: Users, color: 'from-agro-500 to-agro-600', sub: 'terkumpul hingga saat ini' },
-      { label: 'Jumlah Kecamatan', value: kecamatan, icon: MapPin, color: 'from-earth-500 to-earth-600', sub: 'tercakup di sampling' },
-      { label: 'Jumlah Desa', value: desa * 16, icon: MapIcon, color: 'from-blue-500 to-blue-600', sub: 'desa/kelurahan' },
-      { label: 'Skor Rata-rata', value: avgScore.toFixed(2), icon: Award, color: 'from-purple-500 to-purple-600', sub: 'dari skala 5.00' },
-      { label: 'GPS Valid', value: `${Math.round((gpsValid / total) * 100)}%`, icon: Navigation, color: 'from-cyan-500 to-cyan-600', sub: `${gpsValid} titik` },
-      { label: 'Data Tidak Valid', value: total - gpsValid, icon: AlertTriangle, color: 'from-red-500 to-red-600', sub: 'titik di luar wilayah' },
+      { label: 'Total Responden',  value: total,                                         icon: Users,         color: 'from-agro-500 to-agro-600',    sub: 'terkumpul hingga saat ini' },
+      { label: 'Jumlah Kecamatan', value: kecamatan,                                     icon: MapPin,        color: 'from-earth-500 to-earth-600',   sub: 'tercakup di sampling' },
+      { label: 'Jumlah Desa',      value: desa * 16,                                     icon: MapIcon,       color: 'from-blue-500 to-blue-600',     sub: 'desa/kelurahan' },
+      { label: 'Skor Rata-rata',   value: avgScore.toFixed(2),                           icon: Award,         color: 'from-purple-500 to-purple-600', sub: 'dari skala 5.00' },
+      { label: 'GPS Valid',        value: `${Math.round((gpsValid / total) * 100)}%`,    icon: Navigation,    color: 'from-cyan-500 to-cyan-600',     sub: `${gpsValid} titik` },
+      { label: 'Data Tidak Valid', value: total - gpsValid,                              icon: AlertTriangle, color: 'from-red-500 to-red-600',       sub: 'titik di luar wilayah' },
     ];
   }, [respondents]);
 
@@ -143,11 +269,11 @@ export default function Dashboard() {
       { label: '4.2-5.0', count: 0 },
     ];
     respondents.forEach(r => {
-      if (r.finalScore <= 1.8) bins[0].count++;
+      if (r.finalScore <= 1.8)      bins[0].count++;
       else if (r.finalScore <= 2.6) bins[1].count++;
       else if (r.finalScore <= 3.4) bins[2].count++;
       else if (r.finalScore <= 4.2) bins[3].count++;
-      else bins[4].count++;
+      else                          bins[4].count++;
     });
     return bins;
   }, [respondents]);
@@ -186,7 +312,13 @@ export default function Dashboard() {
           <p className="text-slate-400 text-xs mt-0.5">Periksa koneksi internet dan konfigurasi Firebase Anda.</p>
         </div>
         <button
-          onClick={() => { setLoading(true); getRespondentsFromFirestore().then(d => { setRespondents(d); setLoadError(false); }).catch(() => setLoadError(true)).finally(() => setLoading(false)); }}
+          onClick={() => {
+            setLoading(true);
+            getRespondentsFromFirestore()
+              .then(d => { setRespondents(d); setLoadError(false); })
+              .catch(() => setLoadError(true))
+              .finally(() => setLoading(false));
+          }}
           className="px-4 py-2 rounded-lg bg-agro-600 text-white text-sm font-semibold hover:bg-agro-700 transition-colors"
         >
           Coba Lagi
@@ -227,11 +359,12 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {/* Filter Kecamatan */}
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Filter className="w-4 h-4 text-slate-400" />
                 </div>
-                <select 
+                <select
                   value={filterKecamatan}
                   onChange={(e) => setFilterKecamatan(e.target.value)}
                   className="pl-9 pr-8 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium appearance-none outline-none focus:ring-2 focus:ring-agro-500 bg-white"
@@ -242,6 +375,22 @@ export default function Dashboard() {
                   ))}
                 </select>
               </div>
+
+              {/* Tombol Export CSV */}
+              <button
+                onClick={handleExport}
+                disabled={exporting || respondents.length === 0}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-agro-600 text-white text-sm font-semibold hover:bg-agro-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {exporting
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Download className="w-4 h-4" />
+                }
+                Export CSV
+                {filterKecamatan !== 'All' && (
+                  <span className="ml-1 text-agro-200 font-normal text-xs">({filterKecamatan})</span>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -428,10 +577,7 @@ export default function Dashboard() {
                     <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${pct}%`,
-                          backgroundColor: getCategoryColor(cat as any),
-                        }}
+                        style={{ width: `${pct}%`, backgroundColor: getCategoryColor(cat as any) }}
                       ></div>
                     </div>
                   </div>
@@ -441,7 +587,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Row 4: Histogram + Top/Bottom */}
+        {/* Row 4: Histogram + Rata-rata Variabel */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="dash-card p-5 lg:col-span-2">
             <div className="flex items-center justify-between mb-4">
@@ -479,11 +625,11 @@ export default function Dashboard() {
             <p className="text-xs text-slate-500 mb-4">Skor mean per variabel penelitian</p>
             <div className="space-y-3">
               {[
-                { k: 'PP', label: 'Persepsi Pertanian', val: respondents.reduce((s, r) => s + r.pp, 0) / respondents.length, color: 'bg-agro-500' },
-                { k: 'PT', label: 'Teknologi Pertanian', val: respondents.reduce((s, r) => s + r.pt, 0) / respondents.length, color: 'bg-blue-500' },
-                { k: 'NK', label: 'Niat Keterlibatan', val: respondents.reduce((s, r) => s + r.nk, 0) / respondents.length, color: 'bg-amber-500' },
-                { k: 'LS', label: 'Lingkungan Spasial', val: respondents.reduce((s, r) => s + r.ls, 0) / respondents.length, color: 'bg-earth-500' },
-                { k: 'Final', label: 'Skor Akhir', val: respondents.reduce((s, r) => s + r.finalScore, 0) / respondents.length, color: 'bg-gradient-to-r from-agro-500 to-earth-500' },
+                { k: 'PP',    label: 'Persepsi Pertanian', val: respondents.reduce((s, r) => s + r.pp, 0) / respondents.length,         color: 'bg-agro-500' },
+                { k: 'PT',    label: 'Teknologi Pertanian', val: respondents.reduce((s, r) => s + r.pt, 0) / respondents.length,         color: 'bg-blue-500' },
+                { k: 'NK',    label: 'Niat Keterlibatan',  val: respondents.reduce((s, r) => s + r.nk, 0) / respondents.length,         color: 'bg-amber-500' },
+                { k: 'LS',    label: 'Lingkungan Spasial', val: respondents.reduce((s, r) => s + r.ls, 0) / respondents.length,         color: 'bg-earth-500' },
+                { k: 'Final', label: 'Skor Akhir',         val: respondents.reduce((s, r) => s + r.finalScore, 0) / respondents.length, color: 'bg-gradient-to-r from-agro-500 to-earth-500' },
               ].map((v, i) => (
                 <div key={i}>
                   <div className="flex items-center justify-between text-xs mb-1">
@@ -494,10 +640,7 @@ export default function Dashboard() {
                     <span className="font-mono font-bold text-slate-900">{v.val.toFixed(2)}</span>
                   </div>
                   <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full ${v.color} rounded-full`}
-                      style={{ width: `${(v.val / 5) * 100}%` }}
-                    ></div>
+                    <div className={`h-full ${v.color} rounded-full`} style={{ width: `${(v.val / 5) * 100}%` }}></div>
                   </div>
                 </div>
               ))}
