@@ -17,7 +17,6 @@ const LIKERT_LABELS = [
 
 const LIKERT_FULL = ['Sangat Tidak Setuju', 'Tidak Setuju', 'Netral', 'Setuju', 'Sangat Setuju'];
 
-// Koordinat fallback: pusat Kabupaten Jember
 const FALLBACK_LAT = -8.1721;
 const FALLBACK_LNG = 113.6996;
 
@@ -85,7 +84,6 @@ export default function Survey() {
     jarakLahan: '',
   });
 
-  // ─── GPS: dibungkus useCallback agar bisa dipanggil ulang (retry) ───────
   const requestGps = useCallback(() => {
     // Cek support
     if (!navigator.geolocation) {
@@ -96,9 +94,6 @@ export default function Survey() {
 
     setGpsStatus('loading');
 
-    // Opsi: enableHighAccuracy butuh izin penuh di iOS/Android Chrome
-    // maximumAge: 0 → jangan gunakan cache lokasi lama
-    // timeout: 15000 → beri waktu lebih panjang untuk perangkat lambat
     const options: PositionOptions = {
       enableHighAccuracy: true,
       timeout: 15000,
@@ -120,10 +115,9 @@ export default function Survey() {
         setGpsStatus(status);
         setGpsAccuracy(null);
 
-        // Selalu set fallback agar form bisa dilanjutkan
         setIdentitas(p => ({
           ...p,
-          latitude: p.latitude ?? FALLBACK_LAT,  // jangan overwrite kalau sudah ada koordinat
+          latitude: p.latitude ?? FALLBACK_LAT, 
           longitude: p.longitude ?? FALLBACK_LNG,
         }));
       },
@@ -152,7 +146,6 @@ export default function Survey() {
     return sec.items.every(it => responses[it.id] !== undefined);
   };
 
-  // Cek SEMUA section (PP, PT, NK, LS, EXP, DIG) sudah lengkap — dipakai di step review
   const allSectionsComplete = () => sections.every(sec => sectionComplete(sec));
 
   const canProceed = () => {
@@ -190,9 +183,6 @@ export default function Survey() {
       setSubmitting(true);
       setSubmitError(null);
 
-      // Pengecekan akhir sebelum kirim: pastikan SEMUA 37 item sudah terjawab.
-      // (Tombol submit sudah di-disable via canProceed/allSectionsComplete,
-      // tapi ini lapisan pengaman tambahan supaya tidak ada yang bisa lolos.)
       if (!allSectionsComplete()) {
         throw new Error('Masih ada pertanyaan yang belum dijawab. Mohon periksa kembali setiap bagian kuesioner.');
       }
@@ -226,15 +216,7 @@ export default function Survey() {
         jarakLahan: identitas.jarakLahan,
         pengalamanPertanian: parseFloat(scores.exp.toFixed(2)),
         literasiDigital: parseFloat(scores.dig.toFixed(2)),
-
-        // ─── INI BAGIAN PALING PENTING ───────────────────────────────────
-        // Simpan SELURUH jawaban mentah dari setiap 37 item kuesioner
-        // (PP1-PP7, PT1-PT6, NK1-NK6, LS1-LS6, EXP1-EXP6, DIG1-DIG6),
-        // bukan hanya rata-ratanya. `responses` adalah object lengkap
-        // { "PP1": 4, "PP2": 5, ... } yang sudah terkumpul dari semua step.
         jawaban: { ...responses },
-
-        // Metadata GPS ikut disimpan utuh (status & akurasi), bukan cuma koordinat
         gpsStatus: gpsStatus === 'idle' || gpsStatus === 'loading' ? 'success' : gpsStatus,
         gpsAccuracy: gpsAccuracy,
       };
@@ -251,8 +233,6 @@ export default function Survey() {
       setSubmitting(false);
     }
   };
-
-  // ─── GPS Status UI ────────────────────────────────────────────────────────
   const GpsStatusBox = () => {
     const { text, isWarning } = gpsStatusMessage(gpsStatus);
     return (
@@ -303,8 +283,6 @@ export default function Survey() {
       </div>
     );
   };
-
-  // ─── Success screen ───────────────────────────────────────────────────────
   if (submitted) {
     const scores = calculateScores();
     const cat =
@@ -374,7 +352,6 @@ export default function Survey() {
     );
   }
 
-  // ─── Main form ────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50 py-6 md:py-10">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">

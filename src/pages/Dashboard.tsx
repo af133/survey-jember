@@ -19,7 +19,7 @@ import {
   Legend,
 } from 'chart.js';
 import { Bar, Doughnut, Radar } from 'react-chartjs-2';
-import { Respondent, getCategoryColor } from '../data/mockData';
+import { Respondent, getCategoryColor, ALL_ITEM_IDS, SURVEY_SECTIONS } from '../data/mockData';
 import { getRespondentsFromFirestore } from '../utils/firebase';
 
 ChartJS.register(
@@ -30,7 +30,51 @@ ChartJS.register(
 ChartJS.defaults.font.family = "'Inter', sans-serif";
 ChartJS.defaults.color = '#475569';
 
-// ─── CSV Export Utility ────────────────────────────────────────────────────────
+
+type RespondentRow = Respondent & {
+  createdAt?: { toDate: () => Date } | Date | string;
+};
+
+function isGpsValid(r: Respondent): boolean {
+  return !!(
+    r.latitude && r.longitude &&
+    r.latitude < -8 && r.latitude > -8.5 &&
+    r.longitude > 113.3 && r.longitude < 114
+  );
+}
+
+function escapeCell(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function formatDateCell(raw: unknown): string {
+  if (!raw) return '';
+  if (typeof raw === 'object' && raw !== null && 'toDate' in (raw as any)) {
+    return (raw as { toDate: () => Date }).toDate().toLocaleString('id-ID');
+  }
+  if (raw instanceof Date) return raw.toLocaleString('id-ID');
+  if (typeof raw === 'string') {
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) return d.toLocaleString('id-ID');
+    return raw;
+  }
+  return String(raw);
+}
+
+// Daftar pertanyaan, untuk membuat header CSV yang menyertakan teks pertanyaan
+// (memudahkan pembaca CSV tahu PP1 itu pertanyaan apa, tanpa harus buka kuesioner lagi).
+const ITEM_QUESTION_TEXT: Record<string, string> = Object.values(SURVEY_SECTIONS).reduce(
+  (acc, sec) => {
+    sec.items.forEach((it) => { acc[it.id] = it.text; });
+    return acc;
+  },
+  {} as Record<string, string>
+);
 
 function exportRespondentsToCsv(
   respondents: Respondent[],
@@ -41,83 +85,104 @@ function exportRespondentsToCsv(
     return;
   }
 
-  const headers: { key: string; label: string }[] = [
+  // ── Kolom dasar (identitas, lokasi, skor agregat, kategori) ──
+  const baseColumns: { key: string; label: string }[] = [
     // Identitas
-    { key: 'id',           label: 'ID Responden' },
-    { key: 'nama          ',  label: 'Nama Lengkap' },
-    { key: 'jenisKelamin', label: 'Jenis Kelamin' },
-    { key: 'usia',         label: 'Usia' },
-    { key: 'pendidikan',   label: 'Pendidikan Terakhir' },
-    // Lokasi
-    { key: 'kecamatan',    label: 'Kecamatan' },
-    { key: 'desa',         label: 'Desa/Kelurahan' },
-    { key: 'latitude',     label: 'Latitude' },
-    { key: 'longitude',    label: 'Longitude' },
-    // Skor variabel
-    { key: 'pp',           label: 'Skor PP (Persepsi Pertanian)' },
-    { key: 'pt',           label: 'Skor PT (Teknologi Pertanian)' },
-    { key: 'nk',           label: 'Skor NK (Niat Keterlibatan)' },
-    { key: 'ls',           label: 'Skor LS (Lingkungan Spasial)' },
+    { key: 'id',                   label: 'ID Responden' },
+    { key: 'nama',                  label: 'Nama Lengkap' },
+    { key: 'jenisKelamin',          label: 'Jenis Kelamin' },
+    { key: 'usia',                  label: 'Usia' },
+    { key: 'pendidikan',            label: 'Pendidikan Terakhir' },
+    // Lokasi & konteks tempat tinggal
+    { key: 'kecamatan',             label: 'Kecamatan' },
+    { key: 'desa',                  label: 'Desa/Kelurahan' },
+    { key: 'wilayahTinggal',        label: 'Jenis Wilayah Tinggal' },
+    { key: 'luasPertanian',         label: 'Luas Area Pertanian Sekitar' },
+    { key: 'jarakLahan',            label: 'Jarak Rumah ke Lahan Pertanian' },
+    // GPS detail
+    { key: 'latitude',              label: 'Latitude' },
+    { key: 'longitude',             label: 'Longitude' },
+    { key: 'gpsStatus',             label: 'Status GPS' },
+    { key: 'gpsAccuracy',           label: 'Akurasi GPS (meter)' },
+    { key: '_gpsValid',             label: 'GPS Valid (dalam wilayah Jember)' },
+    // Skor rata-rata per dimensi
+    { key: 'pp',                    label: 'Skor PP (Persepsi Pertanian)' },
+    { key: 'pt',                    label: 'Skor PT (Persepsi Teknologi Pertanian)' },
+    { key: 'nk',                    label: 'Skor NK (Niat Keterlibatan)' },
+    { key: 'ls',                    label: 'Skor LS (Kondisi Spasial & Lingkungan)' },
+    { key: 'pengalamanPertanian',   label: 'Skor EXP (Pengalaman Pertanian)' },
+    { key: 'literasiDigital',       label: 'Skor DIG (Literasi Digital Pertanian)' },
     // Hasil akhir
-    { key: 'finalScore',   label: 'Skor Akhir' },
-    { key: 'kategori',     label: 'Kategori' },
-    // Computed
-    { key: '_gpsValid',    label: 'GPS Valid' },
-    { key: 'createdAt',    label: 'Tanggal Isi' },
+    { key: 'finalScore',            label: 'Skor Akhir (rata-rata PP+PT+NK+LS)' },
+    { key: 'kategori',              label: 'Kategori' },
+    // Waktu pengisian
+    { key: 'timestamp',             label: 'Tanggal & Waktu Isi' },
+    { key: 'createdAt',             label: 'Tanggal Tersimpan di Database' },
+    // Jumlah jawaban tersimpan, untuk QA cepat
+    { key: '_totalJawabanTerisi',   label: 'Jumlah Jawaban Terisi (dari 37)' },
   ];
 
-  const escapeCell = (value: unknown): string => {
-    if (value === null || value === undefined) return '';
-    const str = String(value);
-    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-      return `"${str.replace(/"/g, '""')}"`;
+  // ── Kolom detail: SEMUA 37 jawaban item likert, satu kolom per item ──
+  // Header diberi teks pertanyaan singkat supaya rinci & mudah dibaca tanpa
+  // perlu rujuk balik ke kuesioner asli.
+  const itemColumns: { key: string; label: string }[] = ALL_ITEM_IDS.map((itemId) => ({
+    key: `jawaban.${itemId}`,
+    label: `${itemId} - ${ITEM_QUESTION_TEXT[itemId] ?? ''}`,
+  }));
+
+  const allColumns = [...baseColumns, ...itemColumns];
+
+  const getCellValue = (r: RespondentRow, col: { key: string }): string => {
+    // Kolom jawaban per item: key berformat "jawaban.PP1"
+    if (col.key.startsWith('jawaban.')) {
+      const itemId = col.key.split('.')[1];
+      const val = r.jawaban ? (r.jawaban as Record<string, number>)[itemId] : undefined;
+      return escapeCell(val !== undefined && val !== null ? val : '');
     }
-    return str;
+
+    switch (col.key) {
+      case '_gpsValid':
+        return escapeCell(isGpsValid(r) ? 'Ya' : 'Tidak');
+      case '_totalJawabanTerisi':
+        return escapeCell(r.jawaban ? Object.keys(r.jawaban).length : 0);
+      case 'jenisKelamin':
+        return escapeCell(r.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan');
+      case 'gpsStatus':
+        return escapeCell(r.gpsStatus ?? '');
+      case 'gpsAccuracy':
+        return escapeCell(
+          typeof r.gpsAccuracy === 'number' ? r.gpsAccuracy.toFixed(1) : ''
+        );
+      case 'timestamp':
+        return escapeCell(formatDateCell(r.timestamp));
+      case 'createdAt':
+        return escapeCell(formatDateCell(r.createdAt));
+      case 'latitude':
+      case 'longitude':
+        return escapeCell(
+          typeof r[col.key as 'latitude' | 'longitude'] === 'number'
+            ? (r[col.key as 'latitude' | 'longitude'] as number).toFixed(6)
+            : ''
+        );
+      case 'pp':
+      case 'pt':
+      case 'nk':
+      case 'ls':
+      case 'pengalamanPertanian':
+      case 'literasiDigital':
+      case 'finalScore':
+        return escapeCell(
+          typeof (r as any)[col.key] === 'number' ? ((r as any)[col.key] as number).toFixed(2) : ''
+        );
+      default:
+        return escapeCell((r as any)[col.key]);
+    }
   };
 
-  const isGpsValid = (r: Respondent): boolean =>
-    !!(r.latitude && r.longitude &&
-      r.latitude < -8 && r.latitude > -8.5 &&
-      r.longitude > 113.3 && r.longitude < 114);
-
-  const headerRow = headers.map(h => escapeCell(h.label)).join(',');
-
-  const dataRows = respondents.map(r => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const row = r as any;
-    return headers.map(h => {
-      switch (h.key) {
-        case '_gpsValid':
-          return escapeCell(isGpsValid(r) ? 'Ya' : 'Tidak');
-        case 'jenisKelamin':
-          return escapeCell(r.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan');
-        case 'createdAt': {
-          const raw = row.createdAt;
-          if (!raw) return '';
-          if (typeof raw === 'object' && 'toDate' in raw) {
-            return escapeCell(raw.toDate().toLocaleString('id-ID'));
-          }
-          if (raw instanceof Date) return escapeCell(raw.toLocaleString('id-ID'));
-          return escapeCell(raw);
-        }
-        case 'latitude':
-        case 'longitude':
-          return escapeCell(
-            typeof row[h.key] === 'number' ? (row[h.key] as number).toFixed(6) : ''
-          );
-        case 'pp':
-        case 'pt':
-        case 'nk':
-        case 'ls':
-        case 'finalScore':
-          return escapeCell(
-            typeof row[h.key] === 'number' ? (row[h.key] as number).toFixed(2) : ''
-          );
-        default:
-          return escapeCell(row[h.key]);
-      }
-    }).join(',');
-  });
+  const headerRow = allColumns.map((c) => escapeCell(c.label)).join(',');
+  const dataRows = respondents.map((r) =>
+    allColumns.map((col) => getCellValue(r as RespondentRow, col)).join(',')
+  );
 
   // BOM UTF-8 agar Excel baca karakter Indonesia dengan benar
   const BOM = '\uFEFF';
@@ -175,7 +240,7 @@ export default function Dashboard() {
         filterKecamatan === 'All'
           ? 'semua-kecamatan'
           : filterKecamatan.toLowerCase().replace(/\s+/g, '-');
-      exportRespondentsToCsv(respondents, `responden-jember_${suffix}_${timestamp}.csv`);
+      exportRespondentsToCsv(respondents, `responden-jember-detail_${suffix}_${timestamp}.csv`);
     } finally {
       setExporting(false);
     }
@@ -188,11 +253,7 @@ export default function Dashboard() {
     const kecamatan = new Set(respondents.map(r => r.kecamatan)).size;
     const desa = new Set(respondents.map(r => r.desa)).size;
     const avgScore = respondents.reduce((sum, r) => sum + r.finalScore, 0) / total;
-    const gpsValid = respondents.filter(
-      r => r.latitude && r.longitude &&
-        r.latitude < -8 && r.latitude > -8.5 &&
-        r.longitude > 113.3 && r.longitude < 114
-    ).length;
+    const gpsValid = respondents.filter(isGpsValid).length;
     return [
       { label: 'Total Responden',  value: total,                                         icon: Users,         color: 'from-agro-500 to-agro-600',    sub: 'terkumpul hingga saat ini' },
       { label: 'Jumlah Kecamatan', value: kecamatan,                                     icon: MapPin,        color: 'from-earth-500 to-earth-600',   sub: 'tercakup di sampling' },
@@ -381,12 +442,13 @@ export default function Dashboard() {
                 onClick={handleExport}
                 disabled={exporting || respondents.length === 0}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-agro-600 text-white text-sm font-semibold hover:bg-agro-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Export seluruh data termasuk 37 jawaban detail per responden"
               >
                 {exporting
                   ? <Loader2 className="w-4 h-4 animate-spin" />
                   : <Download className="w-4 h-4" />
                 }
-                Export CSV
+                Export CSV Detail
                 {filterKecamatan !== 'All' && (
                   <span className="ml-1 text-agro-200 font-normal text-xs">({filterKecamatan})</span>
                 )}
