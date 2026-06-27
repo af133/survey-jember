@@ -66,8 +66,6 @@ function formatDateCell(raw: unknown): string {
   return String(raw);
 }
 
-// Daftar pertanyaan, untuk membuat header CSV yang menyertakan teks pertanyaan
-// (memudahkan pembaca CSV tahu PP1 itu pertanyaan apa, tanpa harus buka kuesioner lagi).
 const ITEM_QUESTION_TEXT: Record<string, string> = Object.values(SURVEY_SECTIONS).reduce(
   (acc, sec) => {
     sec.items.forEach((it) => { acc[it.id] = it.text; });
@@ -84,47 +82,35 @@ function exportRespondentsToCsv(
     alert('Tidak ada data untuk diekspor.');
     return;
   }
-
-  // ── Kolom dasar (identitas, lokasi, skor agregat, kategori) ──
   const baseColumns: { key: string; label: string }[] = [
-    // Identitas
     { key: 'id',                   label: 'ID Responden' },
     { key: 'nama',                  label: 'Nama Lengkap' },
     { key: 'jenisKelamin',          label: 'Jenis Kelamin' },
     { key: 'usia',                  label: 'Usia' },
     { key: 'pendidikan',            label: 'Pendidikan Terakhir' },
-    // Lokasi & konteks tempat tinggal
     { key: 'kecamatan',             label: 'Kecamatan' },
     { key: 'desa',                  label: 'Desa/Kelurahan' },
     { key: 'wilayahTinggal',        label: 'Jenis Wilayah Tinggal' },
     { key: 'luasPertanian',         label: 'Luas Area Pertanian Sekitar' },
     { key: 'jarakLahan',            label: 'Jarak Rumah ke Lahan Pertanian' },
-    // GPS detail
     { key: 'latitude',              label: 'Latitude' },
     { key: 'longitude',             label: 'Longitude' },
     { key: 'gpsStatus',             label: 'Status GPS' },
     { key: 'gpsAccuracy',           label: 'Akurasi GPS (meter)' },
     { key: '_gpsValid',             label: 'GPS Valid (dalam wilayah Jember)' },
-    // Skor rata-rata per dimensi
     { key: 'pp',                    label: 'Skor PP (Persepsi Pertanian)' },
     { key: 'pt',                    label: 'Skor PT (Persepsi Teknologi Pertanian)' },
     { key: 'nk',                    label: 'Skor NK (Niat Keterlibatan)' },
     { key: 'ls',                    label: 'Skor LS (Kondisi Spasial & Lingkungan)' },
     { key: 'pengalamanPertanian',   label: 'Skor EXP (Pengalaman Pertanian)' },
     { key: 'literasiDigital',       label: 'Skor DIG (Literasi Digital Pertanian)' },
-    // Hasil akhir
     { key: 'finalScore',            label: 'Skor Akhir (rata-rata PP+PT+NK+LS)' },
     { key: 'kategori',              label: 'Kategori' },
-    // Waktu pengisian
     { key: 'timestamp',             label: 'Tanggal & Waktu Isi' },
     { key: 'createdAt',             label: 'Tanggal Tersimpan di Database' },
-    // Jumlah jawaban tersimpan, untuk QA cepat
     { key: '_totalJawabanTerisi',   label: 'Jumlah Jawaban Terisi (dari 37)' },
   ];
 
-  // ── Kolom detail: SEMUA 37 jawaban item likert, satu kolom per item ──
-  // Header diberi teks pertanyaan singkat supaya rinci & mudah dibaca tanpa
-  // perlu rujuk balik ke kuesioner asli.
   const itemColumns: { key: string; label: string }[] = ALL_ITEM_IDS.map((itemId) => ({
     key: `jawaban.${itemId}`,
     label: `${itemId} - ${ITEM_QUESTION_TEXT[itemId] ?? ''}`,
@@ -133,7 +119,6 @@ function exportRespondentsToCsv(
   const allColumns = [...baseColumns, ...itemColumns];
 
   const getCellValue = (r: RespondentRow, col: { key: string }): string => {
-    // Kolom jawaban per item: key berformat "jawaban.PP1"
     if (col.key.startsWith('jawaban.')) {
       const itemId = col.key.split('.')[1];
       const val = r.jawaban ? (r.jawaban as Record<string, number>)[itemId] : undefined;
@@ -183,8 +168,6 @@ function exportRespondentsToCsv(
   const dataRows = respondents.map((r) =>
     allColumns.map((col) => getCellValue(r as RespondentRow, col)).join(',')
   );
-
-  // BOM UTF-8 agar Excel baca karakter Indonesia dengan benar
   const BOM = '\uFEFF';
   const blob = new Blob([BOM + [headerRow, ...dataRows].join('\n')], {
     type: 'text/csv;charset=utf-8;',
@@ -199,8 +182,6 @@ function exportRespondentsToCsv(
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
-
-// ─── Dashboard Component ───────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const [allRespondents, setRespondents] = useState<Respondent[]>([]);
@@ -245,8 +226,6 @@ export default function Dashboard() {
       setExporting(false);
     }
   };
-
-  // === All hooks MUST be declared before any early return ===
   const kpis = useMemo(() => {
     const total = respondents.length;
     if (total === 0) return [];
@@ -350,8 +329,6 @@ export default function Dashboard() {
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
   };
-
-  // === Early returns AFTER all hooks ===
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3">
