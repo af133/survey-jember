@@ -58,7 +58,7 @@ export default function About() {
   const outputs = [
     { label: ' Artikel Jurnal Nasional Terakretasi', count: '1 artikel' },
     { label: ' HKI Platform Webgis' },
-    { label: 'Peta Tematik' },
+    { label: ' 4 Peta Tematik' },
     // { label: 'Dataset Spasial Terbuka', count: '1 paket' },
     // { label: 'Peta Tematik Zonasi', count: '4 lembar peta' },
     // { label: 'Buku Ajar / Modul', count: '1 buku' },
