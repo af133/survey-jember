@@ -66,8 +66,10 @@ export default function Survey() {
   const [submitted, setSubmitted] = useState(false);
 
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [responses, setResponses] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [identitas, setIdentitas] = useState({
     nama: '',
@@ -110,11 +112,13 @@ export default function Survey() {
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
         }));
+        setGpsAccuracy(pos.coords.accuracy ?? null);
         setGpsStatus('success');
       },
       (err) => {
         const status = getGpsErrorStatus(err);
         setGpsStatus(status);
+        setGpsAccuracy(null);
 
         // Selalu set fallback agar form bisa dilanjutkan
         setIdentitas(p => ({
@@ -147,6 +151,9 @@ export default function Survey() {
     const sec = SURVEY_SECTIONS[sectionKey as keyof typeof SURVEY_SECTIONS];
     return sec.items.every(it => responses[it.id] !== undefined);
   };
+
+  // Cek SEMUA section (PP, PT, NK, LS, EXP, DIG) sudah lengkap — dipakai di step review
+  const allSectionsComplete = () => sections.every(sec => sectionComplete(sec));
 
   const canProceed = () => {
     if (step === 1) {
@@ -181,6 +188,15 @@ export default function Survey() {
   const handleSubmit = async () => {
     try {
       setSubmitting(true);
+      setSubmitError(null);
+
+      // Pengecekan akhir sebelum kirim: pastikan SEMUA 37 item sudah terjawab.
+      // (Tombol submit sudah di-disable via canProceed/allSectionsComplete,
+      // tapi ini lapisan pengaman tambahan supaya tidak ada yang bisa lolos.)
+      if (!allSectionsComplete()) {
+        throw new Error('Masih ada pertanyaan yang belum dijawab. Mohon periksa kembali setiap bagian kuesioner.');
+      }
+
       const scores = calculateScores();
       const cat =
         scores.final <= 1.8 ? 'Sangat Rendah' :
@@ -210,6 +226,17 @@ export default function Survey() {
         jarakLahan: identitas.jarakLahan,
         pengalamanPertanian: parseFloat(scores.exp.toFixed(2)),
         literasiDigital: parseFloat(scores.dig.toFixed(2)),
+
+        // ─── INI BAGIAN PALING PENTING ───────────────────────────────────
+        // Simpan SELURUH jawaban mentah dari setiap 37 item kuesioner
+        // (PP1-PP7, PT1-PT6, NK1-NK6, LS1-LS6, EXP1-EXP6, DIG1-DIG6),
+        // bukan hanya rata-ratanya. `responses` adalah object lengkap
+        // { "PP1": 4, "PP2": 5, ... } yang sudah terkumpul dari semua step.
+        jawaban: { ...responses },
+
+        // Metadata GPS ikut disimpan utuh (status & akurasi), bukan cuma koordinat
+        gpsStatus: gpsStatus === 'idle' || gpsStatus === 'loading' ? 'success' : gpsStatus,
+        gpsAccuracy: gpsAccuracy,
       };
 
       await saveRespondentToFirestore(surveyData);
@@ -217,7 +244,9 @@ export default function Survey() {
       window.scrollTo(0, 0);
     } catch (e) {
       console.error('Error submitting survey: ', e);
-      alert('Gagal mengirim survei ke database: ' + (e as Error).message);
+      const msg = (e as Error).message || 'Terjadi kesalahan tidak diketahui.';
+      setSubmitError(msg);
+      alert('Gagal mengirim survei ke database: ' + msg);
     } finally {
       setSubmitting(false);
     }
@@ -247,6 +276,9 @@ export default function Survey() {
             <span className="font-mono font-semibold">
               {identitas.latitude?.toFixed(5)}, {identitas.longitude?.toFixed(5)}
             </span>
+            {gpsAccuracy !== null && (
+              <span className="text-xs text-agro-500">(±{gpsAccuracy.toFixed(0)}m)</span>
+            )}
           </div>
         ) : (
           <div className="space-y-2">
@@ -290,7 +322,7 @@ export default function Survey() {
             </div>
             <h1 className="font-display text-3xl font-bold text-slate-900 mb-2">Terima Kasih!</h1>
             <p className="text-slate-600 mb-6">
-              Jawaban Anda telah berhasil disimpan. Data Anda berkontribusi pada penelitian regenerasi pertanian Kabupaten Jember.
+              Jawaban Anda telah berhasil disimpan beserta seluruh detail jawaban kuesioner. Data Anda berkontribusi pada penelitian regenerasi pertanian Kabupaten Jember.
             </p>
             <div className="bg-slate-50 rounded-xl p-5 text-left mb-6">
               <div className="grid grid-cols-2 gap-3 text-sm">
@@ -309,6 +341,8 @@ export default function Survey() {
                 <div className="font-bold text-agro-700">{scores.final.toFixed(2)}</div>
                 <div className="text-slate-500">Kategori:</div>
                 <div className="font-bold text-agro-700">{cat}</div>
+                <div className="text-slate-500">Total Jawaban Tersimpan:</div>
+                <div className="font-bold text-agro-700">{Object.keys(responses).length} dari 37 item</div>
               </div>
               <div className="mt-4 grid grid-cols-4 gap-2 text-xs">
                 <div className="p-2 rounded bg-agro-50 text-center"><div className="font-bold text-agro-700">PP</div><div className="text-slate-700 font-semibold">{scores.pp.toFixed(2)}</div></div>
@@ -322,6 +356,7 @@ export default function Survey() {
                 setStep(0);
                 setSubmitted(false);
                 setResponses({});
+                setSubmitError(null);
                 setIdentitas({
                   nama: '', usia: '', jenisKelamin: '', pendidikan: '',
                   kecamatan: '', desa: '', latitude: null, longitude: null,
@@ -410,6 +445,7 @@ export default function Survey() {
                     'Kuesioner ini ditujukan untuk Generasi Z (lahir 1997–2012) yang berdomisili di Kabupaten Jember.',
                     'Semua jawaban menggunakan Skala Likert 1–5: STS (Sangat Tidak Setuju) hingga SS (Sangat Setuju).',
                     'Lokasi GPS Anda akan terekam otomatis untuk keperluan analisis spasial.',
+                    'Setiap jawaban Anda untuk seluruh 37 pertanyaan akan disimpan secara lengkap, bukan hanya nilai rata-rata.',
                     'Data Anda bersifat anonim dan hanya digunakan untuk kepentingan penelitian ilmiah.',
                     'Proses pengisian membutuhkan waktu sekitar 8–10 menit.',
                   ].map((t, i) => (
@@ -708,6 +744,21 @@ export default function Survey() {
             );
           })()}
 
+          {/* Step 7 (Review) tampilan tambahan: peringatan jika ada item belum terjawab */}
+          {step === 7 && !allSectionsComplete() && (
+            <div className="mt-4 p-3 rounded-lg bg-orange-50 border border-orange-200 text-sm text-orange-800 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>Masih ada pertanyaan yang belum dijawab di salah satu bagian sebelumnya. Mohon kembali dan lengkapi semua jawaban sebelum mengirim.</span>
+            </div>
+          )}
+
+          {submitError && (
+            <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-800 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{submitError}</span>
+            </div>
+          )}
+
           {/* Navigation */}
           <div className="flex items-center justify-between mt-8 pt-5 border-t border-slate-100">
             <button
@@ -731,7 +782,7 @@ export default function Survey() {
             ) : (
               <button
                 onClick={handleSubmit}
-                disabled={!canProceed() || submitting}
+                disabled={!allSectionsComplete() || !canProceed() || submitting}
                 className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gradient-to-r from-agro-600 to-agro-500 text-white hover:from-agro-500 hover:to-agro-400 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-bold transition-all shadow-lg"
               >
                 {submitting ? (
